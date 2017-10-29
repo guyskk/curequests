@@ -1,3 +1,4 @@
+import json
 from curequests import get, post
 from utils import run_with_curio
 
@@ -31,6 +32,10 @@ async def test_gzip():
 
 @run_with_curio
 async def test_chunked():
-    r = await get('http://httpbin.org/stream/1')
+    r = await get('http://httpbin.org/stream/1', stream=True)
     assert r.status_code == 200
-    assert r.json()
+    body = []
+    async for chunk in r.iter_content():
+        body.append(chunk)
+    body = b''.join(body).decode('utf_8')
+    assert json.loads(body)

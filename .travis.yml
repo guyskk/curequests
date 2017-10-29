@@ -10,7 +10,7 @@ install:
 
 script:
     - pre-commit run --all-files
-    - pytest --cov=validr --cov-report=term-missing tests
+    - pytest --cov=curequests --cov-report=term-missing tests
 
 after_success:
     - codecov

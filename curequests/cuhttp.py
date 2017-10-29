@@ -144,9 +144,11 @@ class ResponseParser:
         if decoder:
             body_stream = _decompress(body_stream, decoder)
 
-        def stream(chunk_size=None):
-            # not really support chunk_size
-            return body_stream
+        def make_stream(body_stream):
+            def stream(chunk_size=None):
+                # not really support chunk_size
+                return body_stream
+            return stream
 
         environ = dict(
             version=self.version,
@@ -154,7 +156,7 @@ class ResponseParser:
             reason=self.reason,
             keep_alive=self.keep_alive,
             headers=self.headers,
-            stream=stream,
+            stream=make_stream(body_stream),
         )
         return Response(**environ)
 

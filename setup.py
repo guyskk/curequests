@@ -3,8 +3,7 @@ from setuptools import setup
 setup(
     name='curequests',
     version='0.0.1',
-    keywords='http requests curio',
-    description='async requests using curio',
+    description='Curio + Requests: Async HTTP for Humans',
     long_description=__doc__,
     author='guyskk',
     author_email='guyskk@qq.com',
