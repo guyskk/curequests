@@ -20,12 +20,12 @@ def normalize_timeout(timeout):
             timeout = TimeoutValue(connect=connect, read=read)
         except ValueError as e:
             # this may raise a string formatting error.
-            err = ("Invalid timeout {0}. Pass a (connect, read) "
-                   "timeout tuple, or a single float to set "
-                   "both timeouts to the same value".format(timeout))
+            err = ('Invalid timeout {0}. Pass a (connect, read) '
+                   'timeout tuple, or a single float to set '
+                   'both timeouts to the same value'.format(timeout))
             raise ValueError(err)
     elif isinstance(timeout, TimeoutSauce):
-        raise ValueError("Not support urllib3 Timeout object")
+        raise ValueError('Not support urllib3 Timeout object')
     else:
         timeout = TimeoutValue(connect=timeout, read=timeout)
     return timeout

@@ -19,7 +19,7 @@ class _Decoder:
         try:
             return super().decompress(*args, **kwargs)
         except zlib.error as ex:
-            msg = "failed to decode response with {}".format(
+            msg = 'failed to decode response with {}'.format(
                 type(self).__name__)
             raise DecodeError(msg) from ex
 

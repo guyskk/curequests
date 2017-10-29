@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 from curequests import get, post
 from utils import run_with_curio
 

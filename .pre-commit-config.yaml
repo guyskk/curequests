@@ -1,0 +1,29 @@
+- repo: git://github.com/pre-commit/pre-commit-hooks
+  sha: v0.7.1
+  hooks:
+    - id: trailing-whitespace
+      files: \.(py|pyx|sh|md|txt|in|ini|json|yaml|yml)$
+    - id: end-of-file-fixer
+      files: \.(py|pyx|sh|md|txt|in|ini|json|yaml|yml)$
+    - id: check-byte-order-marker
+      files: \.(py|pyx)$
+    - id: check-case-conflict
+    - id: check-added-large-files
+      args:
+        - '--maxkb=2000'
+    - id: check-merge-conflict
+    - id: check-symlinks
+    - id: check-json
+    - id: check-yaml
+    - id: debug-statements
+    - id: check-docstring-first
+      files: \.(py|pyx)$
+    - id: double-quote-string-fixer
+      files: \.(py|pyx)$
+    - id: fix-encoding-pragma
+      files: \.(py|pyx)$
+      args:
+        - '--remove'
+    - id: flake8
+      args:
+        - '--max-line-length=119'

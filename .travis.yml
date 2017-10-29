@@ -1,0 +1,16 @@
+language: python
+
+python:
+  - "3.6"
+  - "nightly"
+
+install:
+    - pip install -e .
+    - pip install -r requires-dev.txt
+
+script:
+    - pre-commit run --all-files
+    - pytest --cov=validr --cov-report=term-missing tests
+
+after_success:
+    - codecov
