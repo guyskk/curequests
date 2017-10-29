@@ -1,5 +1,7 @@
 # Curio + Requests: Async HTTP for Humans
 
+[![travis-ci](https://api.travis-ci.org/guyskk/curequests.svg)](https://travis-ci.org/guyskk/curequests) [![codecov](https://codecov.io/gh/guyskk/curequests/branch/master/graph/badge.svg)](https://codecov.io/gh/guyskk/curequests)
+
 > The same taste as Requests!
 
 ## Overview
