@@ -69,6 +69,7 @@ class CuResponse(Response):
             except ReadTimeoutError as e:
                 raise ConnectionError(e)
             self._content_consumed = True
+            await self._connection.release()
 
         if self._content_consumed:
             # simulate reading small chunks of the content

@@ -5,10 +5,10 @@ from requests.adapters import BaseAdapter, TimeoutSauce
 from requests.adapters import (
     CaseInsensitiveDict, get_encoding_from_headers, extract_cookies_to_jar)
 from requests.exceptions import ConnectionError
-from requests import ConnectTimeout
 
 from .models import CuResponse
 from .cuhttp import ResponseParser, RequestSerializer
+from .connection_pool import ConnectionPool
 
 TimeoutValue = namedtuple('TimeoutValue', 'connect read')
 
@@ -58,9 +58,10 @@ class CuHTTPAdapter(BaseAdapter):
       >>> s.mount('http://', a)
     """
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._connections = []
+    def __init__(self, headers=None, *args, **kwargs):
+        super().__init__()
+        self.headers = headers
+        self._pool = ConnectionPool(*args, **kwargs)
 
     async def open_connection(self, request, timeout=None):
         url = yarl.URL(request.url)
@@ -71,19 +72,14 @@ class CuHTTPAdapter(BaseAdapter):
         else:
             ssl = False
             server_hostname = None
-        open_connection = curio.open_connection(
+        conn = await self._pool.get(
+            scheme=url.scheme,
             host=url.raw_host,
             port=url.port,
+            timeout=timeout,
             ssl=ssl,
             server_hostname=server_hostname,
         )
-        if timeout:
-            open_connection = curio.timeout_after(timeout, open_connection)
-        try:
-            conn = await open_connection
-        except curio.TaskTimeout as ex:
-            raise ConnectTimeout(str(ex)) from None
-        self._connections.append(conn)
         return conn
 
     async def send(self, request, stream=False, timeout=None, verify=True, cert=None, proxies=None):
@@ -115,12 +111,12 @@ class CuHTTPAdapter(BaseAdapter):
 
         timeout = normalize_timeout(timeout)
         conn = await self.open_connection(request, timeout=timeout.connect)
-
+        sock = conn.sock
         try:
             async for bytes_to_send in serializer:
-                await conn.sendall(bytes_to_send)
-            raw = await ResponseParser(conn, timeout=timeout.read).parse()
-            response = self.build_response(request, raw)
+                await sock.sendall(bytes_to_send)
+            raw = await ResponseParser(sock, timeout=timeout.read).parse()
+            response = self.build_response(request, raw, conn)
             if not stream:
                 content = []
                 async for trunk in raw.stream():
@@ -128,11 +124,16 @@ class CuHTTPAdapter(BaseAdapter):
                 content = b''.join(content)
                 response._content = content
                 response._content_consumed = True
+                await conn.release()
         except (curio.socket.error) as err:
+            await conn.close()
             raise ConnectionError(err, request=request)
+        except:
+            await conn.close()
+            raise
         return response
 
-    def build_response(self, req, resp):
+    def build_response(self, req, resp, conn):
         """Builds a :class:`Response <requests.Response>` object from a urllib3
         response. This should not be called from user code, and is only exposed
         for use when subclassing the
@@ -143,6 +144,7 @@ class CuHTTPAdapter(BaseAdapter):
         :rtype: requests.Response
         """
         response = CuResponse()
+        response._connection = conn
 
         # Fallback to None if there's no status_code, for whatever reason.
         response.status_code = getattr(resp, 'status', None)
@@ -175,5 +177,4 @@ class CuHTTPAdapter(BaseAdapter):
         Currently, this closes the PoolManager and any active ProxyManager,
         which closes any pooled connections.
         """
-        for conn in self._connections:
-            await conn.close()
+        await self._pool.close()
