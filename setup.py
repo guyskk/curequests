@@ -15,6 +15,7 @@ setup(
         'yarl',
         'curio',
         'requests',
+        'namedlist',
     ],
     zip_safe=False,
     classifiers=[

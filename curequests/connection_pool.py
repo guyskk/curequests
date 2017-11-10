@@ -1,22 +1,65 @@
+"""ConnectionPool
+
+Usage:
+
+    pool = ConnectionPool()
+    conn = await pool.get('http', 'httpbin.org', 80)
+    async with conn:
+        ...
+        # connection will close if exception raised
+        # else connection will release to pool
 """
-ConnectionPool
-"""
-from itertools import chain
 import curio
 from requests.exceptions import ConnectTimeout
+from .resource_pool import ResourcePool, ResourcePoolClosedError
+from .future import Future
+
+
+class ConnectionPoolClosedError(ResourcePoolClosedError):
+    """Connection pool closed"""
+
+
+async def _close_connection_if_need(resource):
+    if resource is not None:
+        conn = resource.connection
+        conn._closed = True
+        await conn.sock.close()
 
 
 class Connection:
+    """Connection
 
-    def __init__(self, resource):
+    Attrs:
+        sock: curio socket
+        closed (bool): connection closed of not
+    """
+
+    def __init__(self, resource_pool, resource, sock):
+        self._resource_pool = resource_pool
         self._resource = resource
-        self.sock = resource.value
+        self.sock = sock
+        self._closed = False
+
+    @property
+    def closed(self):
+        return self._closed
+
+    async def _close_or_release(self, close=False):
+        if self._closed:
+            return
+        pool_ret = self._resource_pool.put(self._resource, close=close)
+        await _close_connection_if_need(pool_ret.need_close)
+        if pool_ret.need_notify is not None:
+            fut, result = pool_ret.need_notify
+            await fut.set_result(result)
 
     async def close(self):
-        await self._resource.close()
+        """Close the connection"""
+        await self._close_or_release(close=True)
 
     async def release(self):
-        await self._resource.release()
+        """Release the connection to connection pool"""
+        await self._close_or_release(close=False)
 
     async def __aenter__(self):
         return self
@@ -29,19 +72,24 @@ class Connection:
 
 
 class ConnectionPool:
-    """Connection Pool"""
+    """Connection Pool
+
+    Attrs:
+        max_conns_per_netloc (int): max connections per netloc
+        max_conns_total (int): max connections in total
+    """
 
     def __init__(self, max_conns_per_netloc=10, max_conns_total=100):
+        self.max_conns_per_netloc = max_conns_per_netloc
+        self.max_conns_total = max_conns_total
         self._pool = ResourcePool(
-            dispose_func=self._close_connection,
+            future_class=Future,
             max_items_per_key=max_conns_per_netloc,
             max_items_total=max_conns_total,
         )
 
-    async def _open_connection(self, item, timeout=None, **kwargs):
-        if item.value is not None:
-            return
-        scheme, host, port = item.key
+    async def _open_connection(self, resource, timeout=None, **kwargs):
+        scheme, host, port = resource.key
         sock_co = curio.open_connection(
             host=host,
             port=port,
@@ -53,210 +101,53 @@ class ConnectionPool:
             sock = await sock_co
         except curio.TaskTimeout as ex:
             raise ConnectTimeout(str(ex)) from None
-        item.value = sock
-
-    async def _close_connection(self, item):
-        await item.value.close()
+        conn = Connection(self._pool, resource, sock)
+        resource.connection = conn  # bind resource & connection
+        return conn
 
     @property
     def num_idle(self):
+        """Number of idle connections"""
         return self._pool.num_idle
 
     @property
     def num_busy(self):
+        """Number of busy connections"""
         return self._pool.num_busy
 
     @property
     def num_total(self):
+        """Number of total connections"""
         return self._pool.num_total
 
     def __repr__(self):
         return f'<{type(self).__name__} idle:{self.num_idle} total:{self.num_total}>'
 
     async def get(self, scheme, host, port, **kwargs):
-        resource = await self._pool.get((scheme, host, port))
-        await self._open_connection(resource, **kwargs)
-        return Connection(resource)
+        """Get a connection"""
+        try:
+            pool_ret = self._pool.get((scheme, host, port))
+        except ResourcePoolClosedError as ex:
+            raise ConnectionPoolClosedError('Connection pool closed') from ex
+        await _close_connection_if_need(pool_ret.need_close)
+        if pool_ret.need_wait is not None:
+            pool_ret = await pool_ret.need_wait
+
+        if pool_ret.need_open is not None:
+            conn = await self._open_connection(pool_ret.need_open, **kwargs)
+        else:
+            conn = pool_ret.idle.connection
+        return conn
 
     async def close(self, force=False):
-        await self._pool.close(force=force)
+        """Close the connection pool
 
-
-class ResourcePoolClosed(Exception):
-    """Resource pool closed"""
-
-
-class Resource:
-
-    def __init__(self, key, pool):
-        self.key = key
-        self.pool = pool
-        self.value = None
-
-    def __repr__(self):
-        return f'<{type(self).__name__} {self.key}>'
-
-    async def release(self):
-        await self.pool.put(self)
-
-    async def close(self):
-        await self.pool.remove(self)
-
-
-class ResourcePool:
-    """A general resource pool algorithm
-
-    TODO: maybe not coroutine safe and thread safe!
-    """
-
-    def __init__(self, dispose_func, max_items_per_key=10, max_items_total=100):
-        self._dispose = dispose_func
-        self._closed = False
-        self.max_items_per_key = max_items_per_key
-        self.max_items_total = max_items_total
-        self._idle_resources = {}  # key: [item, ...]
-        self._busy_resources = {}  # key: [item, ...]
-        self._waitings = {}  # key: [promise, ...]
-        # the two numbers is for better performance
-        self._num_idle = 0
-        self._num_total = 0
-        self._co_lock = curio.RLock()
-
-    @property
-    def num_idle(self):
-        return self._num_idle
-
-    @property
-    def num_busy(self):
-        return self._num_total - self._num_idle
-
-    @property
-    def num_total(self):
-        return self._num_total
-
-    def size(self, key):
-        r = [self._idle_resources, self._busy_resources]
-        return sum(len(x.get(key, [])) for x in r)
-
-    def __repr__(self):
-        return f'<{type(self).__name__} idle:{self.num_idle} total:{self.num_total}>'
-
-    async def remove(self, item):
-        if self._closed:
-            await self._dispose(item)
-            return
-        self._busy_resources[item.key].remove(item)
-        self._num_total -= 1
-        await self._dispose(item)
-        await self._notify_waitings()
-
-    async def put(self, item):
-        if self._closed:
-            await self._dispose(item)
-            return
-        self._busy_resources[item.key].remove(item)
-        waitings = self._waitings.get(item.key)
-        if waitings:
-            self._busy_resources[item.key].append(item)
-            # just notify a promise in the fastest way
-            promise = waitings.pop(0)
-            await promise.set(item)
-            return
-        self._idle_resources.setdefault(item.key, []).append(item)
-        self._num_idle += 1
-        await self._notify_waitings()
-
-    async def _notify_waitings(self):
-        await self._close_an_idle_resource_if_need()
-        async with self._co_lock:
-            for key, waitings in self._waitings.items():
-                if not waitings:
-                    continue
-                item = self._open_new_resource_if_permit(key)
-                if item is not None:
-                    promise = waitings.pop(0)
-                    await promise.set(item)
-                    break
-
-    async def _close_an_idle_resource_if_need(self):
-        if self._num_total < self.max_items_total:
-            return
-        async with self._co_lock:
-            for key, idles in self._idle_resources.items():
-                if idles:
-                    item = idles.pop(0)
-                    self._num_idle -= 1
-                    self._num_total -= 1
-                    await self._dispose(item)
-                    break
-
-    def _open_new_resource_if_permit(self, key):
-        if self.size(key) < self.max_items_per_key:
-            item = Resource(key, self)
-            self._busy_resources.setdefault(key, []).append(item)
-            self._num_total += 1
-            return item
-
-    async def get(self, key):
-        if self._closed:
-            raise ResourcePoolClosed('The resource pool was closed')
-        idles = self._idle_resources.get(key)
-        if idles:
-            item = idles.pop()
-            self._busy_resources.setdefault(key, []).append(item)
-            self._num_idle -= 1
-        else:
-            await self._close_an_idle_resource_if_need()
-            item = self._open_new_resource_if_permit(key)
-            if item is None:
-                promise = curio.Promise()
-                self._waitings.setdefault(key, []).append(promise)
-                item = await promise.get()
-        return item
-
-    async def close(self, force=False):
-        self._closed = True
-        for promise in chain.from_iterable(self._waitings.values()):
-            promise.clear()
-        for item in chain.from_iterable(self._idle_resources.values()):
-            await self._dispose(item)
-        if force:
-            for item in chain.from_iterable(self._busy_resources.values()):
-                await self._dispose(item)
-        self._busy_resources.clear()
-        self._idle_resources.clear()
-        self._waitings.clear()
-        self._num_idle = 0
-        self._num_total = 0
-
-
-async def main():
-
-    async def dispose_resource(item):
-        print('close', item)
-
-    pool = ResourcePool(dispose_resource, max_items_total=1)
-
-    async def task(i, key):
-        print('task:', i, key)
-        item = await pool.get(key)
-        if item.value is None:
-            print('open', item)
-            item.value = i
-        print('task:', i, 'get:', item)
-        await curio.sleep(0.1)
-        if i % 10 == 0:
-            await item.close()
-        else:
-            await item.release()
-
-    tasks = []
-    for i in range(1000):
-        t = await curio.spawn(task, i, f'host{i % 10}')
-        tasks.append(t)
-    for t in tasks:
-        await t.join()
-    print(pool)
-
-if __name__ == '__main__':
-    curio.run(main)
+        Params:
+            force (bool): close busy connections or not
+        """
+        need_close, need_wait = self._pool.close(force=force)
+        ex = ConnectionPoolClosedError('Connection pool closed')
+        for resource in need_close:
+            await _close_connection_if_need(resource)
+        for fut in need_wait:
+            await fut.set_exception(ex)
