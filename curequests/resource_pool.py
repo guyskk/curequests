@@ -107,35 +107,49 @@ class ResourcePool:
             ret.need_close = item
             self._num_total -= 1
 
-        assert ret.need_close is None, "need_close should't be set, it's a bug!"
-        ret.need_close = self._close_an_idle_resource_if_need()
         for key, waitings in self._waitings.items():
             if not waitings:
                 continue
-            item = self._open_new_resource_if_permit(key)
-            if item is not None:
-                ret.need_notify = (waitings.pop(0), ResourcePoolResult(need_open=item))
+            need_close, need_open = self._open_new_resource_if_permit(key)
+            if need_open:
+                ret.need_notify = (waitings.pop(0), ResourcePoolResult(need_open=need_open))
+                assert not (need_close and ret.need_close), \
+                    "should't close two resource at once, it's a bug!"
+                ret.need_close = need_close
                 break
 
         return ret
 
-    def _close_an_idle_resource_if_need(self):
-        if self._num_total < self.max_items_total:
-            return None
+    def _close_an_idle_resource(self):
         for key, idles in self._idle_resources.items():
             if idles:
-                item = idles.pop(0)
                 self._num_idle -= 1
                 self._num_total -= 1
-                return item
-        return None
+                return idles.pop(0)
+
+    def _open_new_resource(self, key):
+        need_open = Resource(key)
+        self._busy_resources.setdefault(key, []).append(need_open)
+        self._num_total += 1
+        return need_open
 
     def _open_new_resource_if_permit(self, key):
-        if self.size(key) < self.max_items_per_key:
-            item = Resource(key)
-            self._busy_resources.setdefault(key, []).append(item)
-            self._num_total += 1
-            return item
+        can_open_key = self.size(key) < self.max_items_per_key
+        can_open_total = self._num_total < self.max_items_total
+        can_close = self._num_idle > 0
+        if can_open_key and can_open_total:
+            # open new resource
+            need_open = self._open_new_resource(key)
+            return None, need_open
+        elif can_open_key and not can_open_total and can_close:
+            # close an idle resource then open new resource
+            need_close = self._close_an_idle_resource()
+            assert need_close and self._num_total < self.max_items_total, \
+                "pool still full after close an idle resource, it's a bug!"
+            need_open = self._open_new_resource(key)
+            return need_close, need_open
+        else:
+            return None, None
 
     def get(self, *args, **kwargs):
         """Get a resource
@@ -159,14 +173,14 @@ class ResourcePool:
             self._num_idle -= 1
             ret.idle = item
         else:
-            ret.need_close = self._close_an_idle_resource_if_need()
-            item = self._open_new_resource_if_permit(key)
-            if item is None:
+            need_close, need_open = self._open_new_resource_if_permit(key)
+            if need_open is None:
                 fut = self.future_class()
                 self._waitings.setdefault(key, []).append(fut)
                 ret.need_wait = fut
             else:
-                ret.need_open = item
+                ret.need_close = need_close
+                ret.need_open = need_open
         return ret
 
     def close(self, *args, **kwargs):
