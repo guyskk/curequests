@@ -16,6 +16,7 @@ from .connection_pool import ConnectionPool
 
 DEFAULT_CONNS_PER_NETLOC = 10
 DEFAULT_CONNS_TOTAL = 100
+CONTENT_CHUNK_SIZE = 16 * 1024
 
 TimeoutValue = namedtuple('TimeoutValue', 'connect read')
 
@@ -161,8 +162,8 @@ class CuHTTPAdapter(BaseAdapter):
                 raw = await ResponseParser(sock, timeout=timeout.read).parse()
                 if not stream:
                     content = []
-                    async for trunk in raw.stream():
-                        content.append(trunk)
+                    async for chunk in raw.stream(CONTENT_CHUNK_SIZE):
+                        content.append(chunk)
                     content = b''.join(content)
                     await conn.release()
             except (curio.socket.error) as err:

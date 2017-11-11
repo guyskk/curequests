@@ -1,3 +1,4 @@
+from curio.meta import finalize
 from requests.models import Response
 from requests.exceptions import (
     ChunkedEncodingError, ContentDecodingError,
@@ -60,16 +61,17 @@ class CuResponse(Response):
 
         async def generate():
             async with self.connection:
-                try:
-                    async for trunk in self.raw.stream(chunk_size):
-                        yield trunk
-                except ProtocolError as e:
-                    raise ChunkedEncodingError(e)
-                except DecodeError as e:
-                    raise ContentDecodingError(e)
-                except ReadTimeoutError as e:
-                    raise ConnectionError(e)
-                self._content_consumed = True
+                async with finalize(self.raw.stream(chunk_size)) as gen:
+                    try:
+                        async for trunk in gen:
+                            yield trunk
+                    except ProtocolError as e:
+                        raise ChunkedEncodingError(e)
+                    except DecodeError as e:
+                        raise ContentDecodingError(e)
+                    except ReadTimeoutError as e:
+                        raise ConnectionError(e)
+                    self._content_consumed = True
 
         if self._content_consumed:
             # simulate reading small chunks of the content
@@ -92,23 +94,26 @@ class CuResponse(Response):
 
         pending = None
 
-        async for chunk in self.iter_content(chunk_size=chunk_size, decode_unicode=decode_unicode):
+        gen = self.iter_content(chunk_size=chunk_size, decode_unicode=decode_unicode)
 
-            if pending is not None:
-                chunk = pending + chunk
+        async with finalize(gen) as gen:
+            async for chunk in gen:
 
-            if delimiter:
-                lines = chunk.split(delimiter)
-            else:
-                lines = chunk.splitlines()
+                if pending is not None:
+                    chunk = pending + chunk
 
-            if lines and lines[-1] and chunk and lines[-1][-1] == chunk[-1]:
-                pending = lines.pop()
-            else:
-                pending = None
+                if delimiter:
+                    lines = chunk.split(delimiter)
+                else:
+                    lines = chunk.splitlines()
 
-            for line in lines:
-                yield line
+                if lines and lines[-1] and chunk and lines[-1][-1] == chunk[-1]:
+                    pending = lines.pop()
+                else:
+                    pending = None
+
+                for line in lines:
+                    yield line
 
         if pending is not None:
             yield pending
