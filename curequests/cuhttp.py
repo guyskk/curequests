@@ -165,11 +165,12 @@ class ResponseParser:
             yield self.body_chunks.pop(0)
         while not self.completed:
             data = await self.recv()
-            if not data:
-                break
+            # feed data even when data is empty, so parser will completed
             self._parser.feed_data(data)
             while self.body_chunks:
                 yield self.body_chunks.pop(0)
+            if not data:
+                break
         if not self.completed:
             raise ProtocolError('incomplete response body')
 

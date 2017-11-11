@@ -39,15 +39,21 @@ class Connection:
         self._resource = resource
         self.sock = sock
         self._closed = False
+        self._released = False
 
     @property
     def closed(self):
         return self._closed
 
+    @property
+    def released(self):
+        return self._released
+
     async def _close_or_release(self, close=False):
-        if self._closed:
+        if self._closed or self._released:
             return
         pool_ret = self._resource_pool.put(self._resource, close=close)
+        self._released = True
         await _close_connection_if_need(pool_ret.need_close)
         if pool_ret.need_notify is not None:
             fut, result = pool_ret.need_notify
@@ -124,7 +130,15 @@ class ConnectionPool:
         return f'<{type(self).__name__} idle:{self.num_idle} total:{self.num_total}>'
 
     async def get(self, scheme, host, port, **kwargs):
-        """Get a connection"""
+        """Get a connection
+
+        Params:
+            scheme (str): connection scheme
+            host (str): connection host
+            port (int): connection port
+            timeout (int): connection timeout in seconds
+            **kwargs: see curio.open_connection
+        """
         try:
             pool_ret = self._pool.get((scheme, host, port))
         except ResourcePoolClosedError as ex:
@@ -137,6 +151,7 @@ class ConnectionPool:
             conn = await self._open_connection(pool_ret.need_open, **kwargs)
         else:
             conn = pool_ret.idle.connection
+            conn._released = False
         return conn
 
     async def close(self, force=False):

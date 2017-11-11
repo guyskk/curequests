@@ -5,7 +5,7 @@ from .adapters import CuHTTPAdapter
 
 class CuSession(Session):
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self):
         super().__init__()
         self.mount('https://', CuHTTPAdapter())
         self.mount('http://', CuHTTPAdapter())

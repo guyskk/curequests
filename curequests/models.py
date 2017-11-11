@@ -59,17 +59,17 @@ class CuResponse(Response):
             raise TypeError('chunk_size must be an int, it is instead a %s.' % type(chunk_size))
 
         async def generate():
-            try:
-                async for trunk in self.raw.stream(chunk_size):
-                    yield trunk
-            except ProtocolError as e:
-                raise ChunkedEncodingError(e)
-            except DecodeError as e:
-                raise ContentDecodingError(e)
-            except ReadTimeoutError as e:
-                raise ConnectionError(e)
-            self._content_consumed = True
-            await self._connection.release()
+            async with self.connection:
+                try:
+                    async for trunk in self.raw.stream(chunk_size):
+                        yield trunk
+                except ProtocolError as e:
+                    raise ChunkedEncodingError(e)
+                except DecodeError as e:
+                    raise ContentDecodingError(e)
+                except ReadTimeoutError as e:
+                    raise ConnectionError(e)
+                self._content_consumed = True
 
         if self._content_consumed:
             # simulate reading small chunks of the content
@@ -135,4 +135,7 @@ class CuResponse(Response):
         return self._content
 
     async def close(self):
-        await self.raw.close()
+        if self._content_consumed:
+            await self.connection.release()
+        else:
+            await self.connection.close()
