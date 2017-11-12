@@ -74,3 +74,8 @@ Follow http://docs.python-requests.org/en/master/#the-user-guide
 - [x] Header Ordering
 - [x] Timeouts
 - [x] Authentication
+
+### Similar projects
+
+- https://github.com/littlecodersh/trip
+  Async HTTP for Humans, Tornado & Requests In Pair
