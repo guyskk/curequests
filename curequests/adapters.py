@@ -165,7 +165,10 @@ class CuHTTPAdapter(BaseAdapter):
                     async for chunk in raw.stream(CONTENT_CHUNK_SIZE):
                         content.append(chunk)
                     content = b''.join(content)
-                    await conn.release()
+                    if raw.keep_alive:
+                        await conn.release()
+                    else:
+                        await conn.close()
             except (curio.socket.error) as err:
                 raise ConnectionError(err, request=request)
         except:

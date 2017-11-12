@@ -159,9 +159,9 @@ class ResponseParser:
     async def parse(self):
         while not self.headers_completed:
             data = await self.recv()
+            self._parser.feed_data(data)
             if not data:
                 break
-            self._parser.feed_data(data)
         if not self.headers_completed:
             raise ProtocolError('incomplete response headers')
         body_stream = self.body_stream()

@@ -10,6 +10,7 @@ Usage:
         # else connection will release to pool
 """
 import curio
+from curio.io import WantRead, WantWrite
 from requests.exceptions import ConnectTimeout
 from .resource_pool import ResourcePool, ResourcePoolClosedError
 from .future import Future
@@ -48,6 +49,19 @@ class Connection:
     @property
     def released(self):
         return self._released
+
+    def _is_peer_closed(self):
+        """check if socket in close-wait state"""
+        # the socket is non-blocking mode, read 1 bytes will return EOF
+        # which means peer closed, or raise exception means alive
+        try:
+            r = self.sock._socket_recv(1)  # FIXME: I use a private method, bad!
+        except WantRead:
+            return False
+        except WantWrite:
+            return False
+        assert r == b'', "is_peer_closed shouldn't be called at this time!"
+        return True
 
     async def _close_or_release(self, close=False):
         if self._closed or self._released:
@@ -139,6 +153,14 @@ class ConnectionPool:
             timeout (int): connection timeout in seconds
             **kwargs: see curio.open_connection
         """
+        while True:
+            conn = await self._get(scheme, host, port, **kwargs)
+            if conn._is_peer_closed():
+                await conn.close()
+            else:
+                return conn
+
+    async def _get(self, scheme, host, port, **kwargs):
         try:
             pool_ret = self._pool.get((scheme, host, port))
         except ResourcePoolClosedError as ex:

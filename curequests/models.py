@@ -60,7 +60,7 @@ class CuResponse(Response):
             raise TypeError('chunk_size must be an int, it is instead a %s.' % type(chunk_size))
 
         async def generate():
-            async with self.connection:
+            async with self:
                 async with finalize(self.raw.stream(chunk_size)) as gen:
                     try:
                         async for trunk in gen:
@@ -141,6 +141,9 @@ class CuResponse(Response):
 
     async def close(self):
         if self._content_consumed:
-            await self.connection.release()
+            if self.raw.keep_alive:
+                await self.connection.release()
+            else:
+                await self.connection.close()
         else:
             await self.connection.close()
