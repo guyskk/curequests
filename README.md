@@ -1,7 +1,6 @@
 # Curio + Requests: Async HTTP for Humans
 
-[![travis-ci](https://api.travis-ci.org/guyskk/curequests.svg)](https://travis-ci.org/guyskk/curequests) [![codecov](https://codecov.io/gh/guyskk/curequests/branch/master/graph/badge.svg)](https://codecov.io/gh/guyskk/curequests)
-
+[![travis-ci](https://api.travis-ci.org/guyskk/curequests.svg?branch=master)](https://travis-ci.org/guyskk/curequests) [![codecov](https://codecov.io/gh/guyskk/curequests/branch/master/graph/badge.svg)](https://codecov.io/gh/guyskk/curequests)
 > The same taste as Requests!
 
 ## Overview
@@ -55,10 +54,10 @@ Follow http://docs.python-requests.org/en/master/#the-user-guide
 - [x] Request and Response Objects [CuResponse]
 - [x] Prepared Requests
 - [x] SSL Cert Verification
-- [ ] Client Side Certificates
-- [ ] CA Certificates
-- [ ] Body Content Workflow
-- [ ] Keep-Alive
+- [x] Client Side Certificates
+- [x] CA Certificates
+- [x] Body Content Workflow
+- [x] Keep-Alive
 - [ ] Streaming Uploads
 - [ ] Chunk-Encoded Requests
 - [ ] POST Multiple Multipart-Encoded Files
@@ -75,7 +74,6 @@ Follow http://docs.python-requests.org/en/master/#the-user-guide
 - [x] Header Ordering
 - [x] Timeouts
 - [x] Authentication
-
 
 ### Similar projects
 

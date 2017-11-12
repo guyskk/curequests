@@ -2,6 +2,7 @@ import zlib
 from collections import namedtuple
 import httptools
 from curio import timeout_after, TaskTimeout
+from curio.io import StreamBase
 from requests.structures import CaseInsensitiveDict
 from requests import ReadTimeout as ReadTimeoutError
 from urllib3.response import GzipDecoder as GzipDecoderBase
@@ -41,6 +42,26 @@ Response = namedtuple('Response', [
     'stream',
 ])
 
+MAX_BUFFER_SIZE = 64 * 1024
+DEFAULT_BUFFER_SIZE = 4 * 1024
+
+
+class ResponseStream(StreamBase):
+    """Response stream as file object"""
+
+    def __init__(self, sock, gen, buffer_size_setter):
+        super().__init__(sock)
+        self._gen = gen
+        self._set_buffer_size = buffer_size_setter
+
+    async def _read(self, maxbytes=-1):
+        maxbytes = maxbytes if maxbytes > 0 else MAX_BUFFER_SIZE
+        self._set_buffer_size(maxbytes)
+        try:
+            return await self._gen.__anext__()
+        except StopAsyncIteration:
+            return b''
+
 
 class ResponseParser:
     """
@@ -58,7 +79,7 @@ class ResponseParser:
         completed
     """
 
-    def __init__(self, sock, *, buffer_size=16 * 1024, timeout=None):
+    def __init__(self, sock, *, buffer_size=DEFAULT_BUFFER_SIZE, timeout=None):
         self._sock = sock
         self._parser = httptools.HttpResponseParser(self)
 
@@ -73,6 +94,7 @@ class ResponseParser:
         self.headers = []
 
         # temp attrs
+        self.current_buffer_size = self.buffer_size
         self.header_name = b''
         self.body_chunks = []
 
@@ -113,15 +135,18 @@ class ResponseParser:
 
     async def recv(self):
         if not self.timeout or self.timeout <= 0:
-            return await self._sock.recv(self.buffer_size)
+            return await self._sock.recv(self.current_buffer_size)
         else:
             try:
                 return await timeout_after(
                     self.timeout,
-                    self._sock.recv(self.buffer_size)
+                    self._sock.recv(self.current_buffer_size)
                 )
             except TaskTimeout as ex:
                 raise ReadTimeoutError(str(ex)) from None
+
+    def _set_current_buffer_size(self, buffer_size):
+        self.current_buffer_size = buffer_size
 
     def _get_decoder(self):
         mode = self.headers.get('Content-Encoding', '').lower()
@@ -134,9 +159,9 @@ class ResponseParser:
     async def parse(self):
         while not self.headers_completed:
             data = await self.recv()
+            self._parser.feed_data(data)
             if not data:
                 break
-            self._parser.feed_data(data)
         if not self.headers_completed:
             raise ProtocolError('incomplete response headers')
         body_stream = self.body_stream()
@@ -144,11 +169,9 @@ class ResponseParser:
         if decoder:
             body_stream = _decompress(body_stream, decoder)
 
-        def make_stream(body_stream):
-            def stream(chunk_size=None):
-                # not really support chunk_size
-                return body_stream
-            return stream
+        def stream(chunk_size=DEFAULT_BUFFER_SIZE):
+            self._set_current_buffer_size(chunk_size)
+            return body_stream
 
         environ = dict(
             version=self.version,
@@ -156,7 +179,7 @@ class ResponseParser:
             reason=self.reason,
             keep_alive=self.keep_alive,
             headers=self.headers,
-            stream=make_stream(body_stream),
+            stream=stream,
         )
         return Response(**environ)
 
@@ -165,11 +188,12 @@ class ResponseParser:
             yield self.body_chunks.pop(0)
         while not self.completed:
             data = await self.recv()
-            if not data:
-                break
+            # feed data even when data is empty, so parser will completed
             self._parser.feed_data(data)
             while self.body_chunks:
                 yield self.body_chunks.pop(0)
+            if not data:
+                break
         if not self.completed:
             raise ProtocolError('incomplete response body')
 

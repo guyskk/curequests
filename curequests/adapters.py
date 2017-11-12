@@ -1,14 +1,22 @@
-import curio
-import yarl
+from os.path import isdir, exists
 from collections import namedtuple
+
+import yarl
+import curio
+from curio import ssl
 from requests.adapters import BaseAdapter, TimeoutSauce
 from requests.adapters import (
     CaseInsensitiveDict, get_encoding_from_headers, extract_cookies_to_jar)
 from requests.exceptions import ConnectionError
-from requests import ConnectTimeout
 
 from .models import CuResponse
 from .cuhttp import ResponseParser, RequestSerializer
+from .connection_pool import ConnectionPool
+
+
+DEFAULT_CONNS_PER_NETLOC = 10
+DEFAULT_CONNS_TOTAL = 100
+CONTENT_CHUNK_SIZE = 16 * 1024
 
 TimeoutValue = namedtuple('TimeoutValue', 'connect read')
 
@@ -58,33 +66,54 @@ class CuHTTPAdapter(BaseAdapter):
       >>> s.mount('http://', a)
     """
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._connections = []
-
-    async def open_connection(self, request, timeout=None):
-        url = yarl.URL(request.url)
-        request.headers.setdefault('Host', url.raw_host)
-        if url.scheme == 'https':
-            ssl = True
-            server_hostname = url.raw_host
-        else:
-            ssl = False
-            server_hostname = None
-        open_connection = curio.open_connection(
-            host=url.raw_host,
-            port=url.port,
-            ssl=ssl,
-            server_hostname=server_hostname,
+    def __init__(self, *,
+                 max_conns_per_netloc=DEFAULT_CONNS_PER_NETLOC,
+                 max_conns_total=DEFAULT_CONNS_TOTAL,
+                 ):
+        super().__init__()
+        self._pool = ConnectionPool(
+            max_conns_per_netloc=max_conns_per_netloc,
+            max_conns_total=max_conns_total,
         )
-        if timeout:
-            open_connection = curio.timeout_after(timeout, open_connection)
-        try:
-            conn = await open_connection
-        except curio.TaskTimeout as ex:
-            raise ConnectTimeout(str(ex)) from None
-        self._connections.append(conn)
-        return conn
+
+    def get_ssl_params(self, url, verify, cert):
+        if url.scheme.lower() != 'https' or (not verify and not cert):
+            return {'ssl': False}
+
+        ssl_params = {}
+        ssl_context = ssl.create_default_context()
+
+        if verify:
+            if isinstance(verify, str):
+                if not exists(verify):
+                    raise FileNotFoundError(
+                        f'Could not find a suitable TLS CA certificate bundle, '
+                        f'invalid path: {verify}')
+                if isdir(verify):
+                    ssl_context.load_verify_locations(capath=verify)
+                else:
+                    ssl_context.load_verify_locations(cafile=verify)
+            ssl_params['server_hostname'] = url.raw_host
+            ssl_context.verify_mode = ssl.CERT_REQUIRED
+
+        if cert:
+            if isinstance(cert, str):
+                cert_file = cert
+                key_file = None
+            else:
+                cert_file, key_file = cert
+            if cert_file and not exists(cert_file):
+                raise FileNotFoundError(
+                    f'Could not find the TLS certificate file, '
+                    f'invalid path: {cert_file}')
+            if key_file and not exists(key_file):
+                raise FileNotFoundError(
+                    f'Could not find the TLS certificate file, '
+                    f'invalid path: {key_file}')
+            ssl_context.load_cert_chain(cert_file, key_file)
+
+        ssl_params['ssl'] = ssl_context
+        return ssl_params
 
     async def send(self, request, stream=False, timeout=None, verify=True, cert=None, proxies=None):
         """Sends PreparedRequest object. Returns Response object.
@@ -103,6 +132,8 @@ class CuHTTPAdapter(BaseAdapter):
         :rtype: requests.Response
         """
         url = yarl.URL(request.url)
+        request.headers.setdefault('Host', url.raw_host)
+
         request_path = url.raw_path
         if url.raw_query_string:
             request_path += '?' + url.raw_query_string
@@ -113,26 +144,44 @@ class CuHTTPAdapter(BaseAdapter):
             body=request.body,
         )
 
+        ssl_params = self.get_ssl_params(url, verify, cert)
         timeout = normalize_timeout(timeout)
-        conn = await self.open_connection(request, timeout=timeout.connect)
+        conn = await self._pool.get(
+            scheme=url.scheme,
+            host=url.raw_host,
+            port=url.port,
+            timeout=timeout.connect,
+            **ssl_params,
+        )
 
         try:
-            async for bytes_to_send in serializer:
-                await conn.sendall(bytes_to_send)
-            raw = await ResponseParser(conn, timeout=timeout.read).parse()
-            response = self.build_response(request, raw)
-            if not stream:
-                content = []
-                async for trunk in raw.stream():
-                    content.append(trunk)
-                content = b''.join(content)
-                response._content = content
-                response._content_consumed = True
-        except (curio.socket.error) as err:
-            raise ConnectionError(err, request=request)
+            sock = conn.sock
+            try:
+                async for bytes_to_send in serializer:
+                    await sock.sendall(bytes_to_send)
+                raw = await ResponseParser(sock, timeout=timeout.read).parse()
+                if not stream:
+                    content = []
+                    async for chunk in raw.stream(CONTENT_CHUNK_SIZE):
+                        content.append(chunk)
+                    content = b''.join(content)
+                    if raw.keep_alive:
+                        await conn.release()
+                    else:
+                        await conn.close()
+            except (curio.socket.error) as err:
+                raise ConnectionError(err, request=request)
+        except:
+            await conn.close()
+            raise
+
+        response = self.build_response(request, raw, conn)
+        if not stream:
+            response._content = content
+            response._content_consumed = True
         return response
 
-    def build_response(self, req, resp):
+    def build_response(self, req, resp, conn):
         """Builds a :class:`Response <requests.Response>` object from a urllib3
         response. This should not be called from user code, and is only exposed
         for use when subclassing the
@@ -165,7 +214,7 @@ class CuHTTPAdapter(BaseAdapter):
 
         # Give the Response some context.
         response.request = req
-        response.connection = self
+        response.connection = conn
 
         return response
 
@@ -175,5 +224,4 @@ class CuHTTPAdapter(BaseAdapter):
         Currently, this closes the PoolManager and any active ProxyManager,
         which closes any pooled connections.
         """
-        for conn in self._connections:
-            await conn.close()
+        await self._pool.close()

@@ -1,5 +1,7 @@
+exclude: curequests/contextlib.py
+repos:
 - repo: git://github.com/pre-commit/pre-commit-hooks
-  sha: v0.7.1
+  sha: v1.1.1
   hooks:
     - id: trailing-whitespace
       files: \.(py|pyx|sh|md|txt|in|ini|json|yaml|yml)$
@@ -27,3 +29,4 @@
     - id: flake8
       args:
         - '--max-line-length=119'
+        - '--ignore=E722'
