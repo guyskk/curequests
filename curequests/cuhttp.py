@@ -223,7 +223,8 @@ class RequestSerializer:
             if self.method in {'POST', 'PUT', 'PATCH'}:
                 self.headers['Content-Length'] = len(self.body)
             yield self._format_headers()
-            yield self.body
+            if self.body:
+                yield self.body
         else:
             # stream request
             if 'Content-Length' not in self.headers:

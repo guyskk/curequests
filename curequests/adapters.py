@@ -12,7 +12,7 @@ from requests.exceptions import ConnectionError
 from .models import CuResponse
 from .cuhttp import ResponseParser, RequestSerializer
 from .connection_pool import ConnectionPool
-
+from .proxy_pool import ProxyPool, select_proxy
 
 DEFAULT_CONNS_PER_NETLOC = 10
 DEFAULT_CONNS_TOTAL = 100
@@ -75,6 +75,7 @@ class CuHTTPAdapter(BaseAdapter):
             max_conns_per_netloc=max_conns_per_netloc,
             max_conns_total=max_conns_total,
         )
+        self._proxy_pool = ProxyPool()
 
     def get_ssl_params(self, url, verify, cert):
         if url.scheme.lower() != 'https' or (not verify and not cert):
@@ -146,13 +147,24 @@ class CuHTTPAdapter(BaseAdapter):
 
         ssl_params = self.get_ssl_params(url, verify, cert)
         timeout = normalize_timeout(timeout)
-        conn = await self._pool.get(
-            scheme=url.scheme,
-            host=url.raw_host,
-            port=url.port,
-            timeout=timeout.connect,
-            **ssl_params,
-        )
+
+        proxy = select_proxy(
+            url.scheme, host=url.raw_host, port=url.port, proxies=proxies)
+        if proxy:
+            conn = await self._proxy_pool.get(
+                scheme=url.scheme,
+                host=url.raw_host,
+                port=url.port,
+                proxy=proxy,
+            )
+        else:
+            conn = await self._pool.get(
+                scheme=url.scheme,
+                host=url.raw_host,
+                port=url.port,
+                timeout=timeout.connect,
+                **ssl_params,
+            )
 
         try:
             sock = conn.sock
@@ -225,3 +237,4 @@ class CuHTTPAdapter(BaseAdapter):
         which closes any pooled connections.
         """
         await self._pool.close()
+        await self._proxy_pool.close()
