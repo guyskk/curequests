@@ -37,9 +37,10 @@ class ProxyPool:
     def __init__(self, max_conns_per_proxy=10, max_conns_total=100):
         self._conn_pool = ConnectionPool(max_conns_per_proxy, max_conns_total)
 
-    async def get(self, scheme, host, port, *, proxy, **kwargs):
+    async def get(self, scheme, host, port, *, proxy, timeout=None, **kwargs):
         proxy = URL(proxy)
-        conn = await self._conn_pool.get(proxy.scheme, proxy.raw_host, proxy.port)
+        conn = await self._conn_pool.get(
+            proxy.scheme, proxy.raw_host, proxy.port, timeout=timeout)
         if not kwargs.get('ssl', False):
             return conn
         headers = {}

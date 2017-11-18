@@ -150,21 +150,20 @@ class CuHTTPAdapter(BaseAdapter):
 
         proxy = select_proxy(
             url.scheme, host=url.raw_host, port=url.port, proxies=proxies)
+        proxy_params = {}
         if proxy:
-            conn = await self._proxy_pool.get(
-                scheme=url.scheme,
-                host=url.raw_host,
-                port=url.port,
-                proxy=proxy,
-            )
+            pool = self._proxy_pool
+            proxy_params['proxy'] = proxy
         else:
-            conn = await self._pool.get(
-                scheme=url.scheme,
-                host=url.raw_host,
-                port=url.port,
-                timeout=timeout.connect,
-                **ssl_params,
-            )
+            pool = self._pool
+        conn = await pool.get(
+            scheme=url.scheme,
+            host=url.raw_host,
+            port=url.port,
+            timeout=timeout.connect,
+            **proxy_params,
+            **ssl_params,
+        )
 
         try:
             sock = conn.sock
