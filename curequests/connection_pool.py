@@ -9,11 +9,21 @@ Usage:
         # connection will close if exception raised
         # else connection will release to pool
 """
-import curio
+from base64 import b64encode
+from yarl import URL
 from curio.io import WantRead, WantWrite
-from requests.exceptions import ConnectTimeout
+from requests.exceptions import ProxyError
+
 from .resource_pool import ResourcePool, ResourcePoolClosedError
 from .future import Future
+from .cuhttp import RequestSerializer, ResponseParser
+from .network import open_connection, ssl_wrap_socket
+
+
+def _basic_auth_str(username, password):
+    """Returns a Basic Auth string."""
+    auth = ('%s:%s' % (username, password)).encode('utf-8')
+    return 'Basic ' + b64encode(auth).decode('utf-8').strip()
 
 
 class ConnectionPoolClosedError(ResourcePoolClosedError):
@@ -31,14 +41,22 @@ class Connection:
     """Connection
 
     Attrs:
-        sock: curio socket
-        closed (bool): connection closed of not
+        scheme (str): scheme
+        host (str): host
+        port (int): port
+        sock (curio.Socket): socket
+        proxy (yarl.URL): proxy url
+        closed (bool): connection closed or not
+        released (bool): connection released or not
     """
 
-    def __init__(self, resource_pool, resource, sock):
+    def __init__(self, resource_pool, resource, sock, proxy=None):
         self._resource_pool = resource_pool
         self._resource = resource
+        resource.connection = self  # bind resource & connection
+        self.scheme, self.host, self.port = resource.key
         self.sock = sock
+        self.proxy = proxy
         self._closed = False
         self._released = False
 
@@ -90,6 +108,22 @@ class Connection:
         else:
             await self.close()
 
+    def __repr__(self):
+        scheme, host, port = self.scheme, self.host, self.port
+        if self.proxy:
+            proxy = self.proxy
+            if proxy.password:
+                proxy = proxy.with_password('***')
+            proxy = ' proxy={}'.format(proxy)
+        else:
+            proxy = ''
+        status = 'busy'
+        if self.released:
+            status = 'idle'
+        if self.closed:
+            status = 'closed'
+        return f'<{type(self).__name__} {scheme}://{host}:{port}{proxy} [{status}]>'
+
 
 class ConnectionPool:
     """Connection Pool
@@ -108,21 +142,40 @@ class ConnectionPool:
             max_items_total=max_conns_total,
         )
 
-    async def _open_connection(self, resource, timeout=None, **kwargs):
+    async def _open_connection(self, resource, proxy=None, timeout=None, **ssl_params):
         scheme, host, port = resource.key
-        sock_co = curio.open_connection(
-            host=host,
-            port=port,
-            **kwargs
+        if not proxy:
+            sock = await open_connection(
+                host=host,
+                port=port,
+                timeout=timeout,
+                **ssl_params
+            )
+            return Connection(self._pool, resource, sock)
+        proxy = URL(proxy)
+        sock = await open_connection(
+            host=proxy.raw_host,
+            port=proxy.port,
+            timeout=timeout,
         )
-        if timeout is not None:
-            sock_co = curio.timeout_after(timeout, sock_co)
-        try:
-            sock = await sock_co
-        except curio.TaskTimeout as ex:
-            raise ConnectTimeout(str(ex)) from None
-        conn = Connection(self._pool, resource, sock)
-        resource.connection = conn  # bind resource & connection
+        conn = Connection(self._pool, resource, sock, proxy)
+        return await self._setup_proxy(conn, proxy, **ssl_params)
+
+    async def _setup_proxy(self, conn, proxy, **ssl_params):
+        if not ssl_params.get('ssl_context'):
+            return conn
+        headers = {}
+        if proxy.raw_user:
+            auth = _basic_auth_str(proxy.raw_user, proxy.password)
+            headers['Proxy-Authorization'] = auth
+        path = f'{conn.host}:{conn.port}'
+        request = RequestSerializer(path, method='CONNECT', headers=headers)
+        async for chunk in request:
+            await conn.sock.sendall(chunk)
+        response = await ResponseParser(conn.sock).parse()
+        if response.status != 200:
+            raise ProxyError(response)
+        conn.sock = await ssl_wrap_socket(conn.sock, **ssl_params)
         return conn
 
     @property

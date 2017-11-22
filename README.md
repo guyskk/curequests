@@ -65,7 +65,7 @@ Follow http://docs.python-requests.org/en/master/#the-user-guide
 - [x] Event Hooks
 - [x] Custom Authentication
 - [x] Streaming Requests [Async Generator]
-- [ ] Proxies
+- [x] Proxies [HTTP&HTTPS, not support SOCKS currently]
 - [x] Compliance
 - [x] HTTP Verbs
 - [x] Custom Verbs

@@ -13,7 +13,6 @@ from .models import CuResponse
 from .cuhttp import ResponseParser, RequestSerializer
 from .connection_pool import ConnectionPool
 
-
 DEFAULT_CONNS_PER_NETLOC = 10
 DEFAULT_CONNS_TOTAL = 100
 CONTENT_CHUNK_SIZE = 16 * 1024
@@ -37,6 +36,31 @@ def normalize_timeout(timeout):
     else:
         timeout = TimeoutValue(connect=timeout, read=timeout)
     return timeout
+
+
+def select_proxy(scheme, host, port, proxies):
+    """Select a proxy for the url, if applicable.
+
+    :param scheme, host, port: The url being for the request
+    :param proxies: A dictionary of schemes or schemes and hosts to proxy URLs
+    """
+    proxies = proxies or {}
+    if host is None:
+        return proxies.get(scheme, proxies.get('all'))
+
+    proxy_keys = [
+        scheme + '://' + host,
+        scheme,
+        'all://' + host,
+        'all',
+    ]
+    proxy = None
+    for proxy_key in proxy_keys:
+        if proxy_key in proxies:
+            proxy = proxies[proxy_key]
+            break
+
+    return proxy
 
 
 class CuHTTPAdapter(BaseAdapter):
@@ -77,8 +101,8 @@ class CuHTTPAdapter(BaseAdapter):
         )
 
     def get_ssl_params(self, url, verify, cert):
-        if url.scheme.lower() != 'https' or (not verify and not cert):
-            return {'ssl': False}
+        if url.scheme != 'https' or (not verify and not cert):
+            return {'ssl_context': None}
 
         ssl_params = {}
         ssl_context = ssl.create_default_context()
@@ -112,7 +136,7 @@ class CuHTTPAdapter(BaseAdapter):
                     f'invalid path: {key_file}')
             ssl_context.load_cert_chain(cert_file, key_file)
 
-        ssl_params['ssl'] = ssl_context
+        ssl_params['ssl_context'] = ssl_context
         return ssl_params
 
     async def send(self, request, stream=False, timeout=None, verify=True, cert=None, proxies=None):
@@ -134,24 +158,30 @@ class CuHTTPAdapter(BaseAdapter):
         url = yarl.URL(request.url)
         request.headers.setdefault('Host', url.raw_host)
 
-        request_path = url.raw_path
-        if url.raw_query_string:
-            request_path += '?' + url.raw_query_string
-        serializer = RequestSerializer(
-            path=request_path,
-            method=request.method,
-            headers=request.headers,
-            body=request.body,
-        )
-
         ssl_params = self.get_ssl_params(url, verify, cert)
         timeout = normalize_timeout(timeout)
+        proxy = select_proxy(
+            url.scheme, host=url.raw_host, port=url.port, proxies=proxies)
         conn = await self._pool.get(
             scheme=url.scheme,
             host=url.raw_host,
             port=url.port,
             timeout=timeout.connect,
+            proxy=proxy,
             **ssl_params,
+        )
+
+        request_path = url.raw_path
+        if url.raw_query_string:
+            request_path += '?' + url.raw_query_string
+        if conn.proxy and conn.proxy.scheme == 'http' and url.scheme == 'http':
+            origin = f'{url.scheme}://{url.raw_host}:{url.port}'
+            request_path = origin + request_path
+        serializer = RequestSerializer(
+            path=request_path,
+            method=request.method,
+            headers=request.headers,
+            body=request.body,
         )
 
         try:
