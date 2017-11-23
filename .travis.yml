@@ -5,12 +5,11 @@ python:
   - "nightly"
 
 install:
-    - pip install -e .
-    - pip install -r requires-dev.txt
+    - pip install -r requirements.txt
 
 script:
-    - pre-commit run --all-files
-    - inv test
+    - inv lint
+    - inv test --cov
 
 after_success:
     - codecov

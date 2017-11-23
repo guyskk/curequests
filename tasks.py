@@ -2,13 +2,23 @@ from invoke import task
 
 
 @task
-def test(ctx, cov=True, k='', pdb=False):
-    cov = '--cov=curequests --cov-report=term-missing' if cov else ''
-    k = f'-k test_{k}' if k else ''
-    pdb = f'--pdb' if pdb else ''
+def install(ctx):
+    ctx.run('pip install -r requirements.txt')
+    ctx.run('pre-commit install')
+
+
+@task
+def lint(ctx):
+    ctx.run('pre-commit run --all-files')
+
+
+@task
+def test(ctx, cov=False, verbose=False):
+    cov = ' --cov=curequests --cov-report=term-missing' if cov else ''
+    verbose = ' -v' if verbose else ''
     cmd = (f'REQUESTS_CA_BUNDLE=`python -m pytest_httpbin.certs` '
-           f'pytest --tb=short -s {cov} {k} {pdb} tests')
-    ctx.run(cmd, echo=True, pty=True)
+           f'pytest --tb=short{cov}{verbose} tests')
+    ctx.run(cmd)
 
 
 @task
@@ -20,4 +30,4 @@ def dist(ctx, upload=False):
     if upload:
         cmds.append('twine upload dist/*')
     for cmd in cmds:
-        ctx.run(cmd, echo=True, pty=True)
+        ctx.run(cmd, echo=True)
