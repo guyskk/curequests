@@ -1,66 +1,21 @@
 from os.path import isdir, exists
-from collections import namedtuple
 
 import yarl
 import curio
 from curio import ssl
-from requests.adapters import BaseAdapter, TimeoutSauce
+from requests.adapters import BaseAdapter
 from requests.adapters import (
     CaseInsensitiveDict, get_encoding_from_headers, extract_cookies_to_jar)
 from requests.exceptions import ConnectionError
 
-from .models import CuResponse
+from .models import CuResponse, MultipartBody
+from .utils import select_proxy, normalize_timeout, ensure_asyncgen
 from .cuhttp import ResponseParser, RequestSerializer
 from .connection_pool import ConnectionPool
 
 DEFAULT_CONNS_PER_NETLOC = 10
 DEFAULT_CONNS_TOTAL = 100
 CONTENT_CHUNK_SIZE = 16 * 1024
-
-TimeoutValue = namedtuple('TimeoutValue', 'connect read')
-
-
-def normalize_timeout(timeout):
-    if isinstance(timeout, tuple):
-        try:
-            connect, read = timeout
-            timeout = TimeoutValue(connect=connect, read=read)
-        except ValueError as e:
-            # this may raise a string formatting error.
-            err = ('Invalid timeout {0}. Pass a (connect, read) '
-                   'timeout tuple, or a single float to set '
-                   'both timeouts to the same value'.format(timeout))
-            raise ValueError(err)
-    elif isinstance(timeout, TimeoutSauce):
-        raise ValueError('Not support urllib3 Timeout object')
-    else:
-        timeout = TimeoutValue(connect=timeout, read=timeout)
-    return timeout
-
-
-def select_proxy(scheme, host, port, proxies):
-    """Select a proxy for the url, if applicable.
-
-    :param scheme, host, port: The url being for the request
-    :param proxies: A dictionary of schemes or schemes and hosts to proxy URLs
-    """
-    proxies = proxies or {}
-    if host is None:
-        return proxies.get(scheme, proxies.get('all'))
-
-    proxy_keys = [
-        scheme + '://' + host,
-        scheme,
-        'all://' + host,
-        'all',
-    ]
-    proxy = None
-    for proxy_key in proxy_keys:
-        if proxy_key in proxies:
-            proxy = proxies[proxy_key]
-            break
-
-    return proxy
 
 
 class CuHTTPAdapter(BaseAdapter):
@@ -177,11 +132,19 @@ class CuHTTPAdapter(BaseAdapter):
         if conn.proxy and conn.proxy.scheme == 'http' and url.scheme == 'http':
             origin = f'{url.scheme}://{url.raw_host}:{url.port}'
             request_path = origin + request_path
+        body = body_stream = None
+        if isinstance(request.body, MultipartBody):
+            body_stream = request.body
+        elif request.body and not isinstance(request.body, bytes):
+            body_stream = ensure_asyncgen(request.body)
+        else:
+            body = request.body
         serializer = RequestSerializer(
             path=request_path,
             method=request.method,
             headers=request.headers,
-            body=request.body,
+            body=body,
+            body_stream=body_stream,
         )
 
         try:

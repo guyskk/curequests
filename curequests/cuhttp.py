@@ -217,6 +217,12 @@ class RequestSerializer:
             headers.append(f'{k}: {v}')
         return '\r\n'.join(headers).encode() + b'\r\n\r\n'
 
+    def _format_chunk(self, chunk):
+        return format(len(chunk), 'X').encode() + b'\r\n' + chunk + b'\r\n'
+
+    def _is_chunked(self):
+        return self.headers.get('Transfer-Encoding', '').lower() == 'chunked'
+
     async def __aiter__(self):
         if self.body_stream is None:
             # one-off request
@@ -227,11 +233,17 @@ class RequestSerializer:
                 yield self.body
         else:
             # stream request
-            if 'Content-Length' not in self.headers:
-                raise ValueError('Content-Length not set')
-            yield self._format_headers()
-            async for chunk in self.body_stream:
-                yield chunk
+            if self._is_chunked():
+                yield self._format_headers()
+                async for chunk in self.body_stream:
+                    yield self._format_chunk(chunk)
+                yield b'0\r\n\r\n'
+            else:
+                if 'Content-Length' not in self.headers:
+                    raise ValueError('Content-Length not set')
+                yield self._format_headers()
+                async for chunk in self.body_stream:
+                    yield chunk
 
 
 async def _decompress(body_stream, decoder):
