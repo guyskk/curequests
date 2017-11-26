@@ -41,7 +41,7 @@ Follow http://docs.python-requests.org/en/master/#the-user-guide
 - [x] Binary Response Content
 - [x] JSON Response Content
 - [x] Custom Headers
-- [ ] POST a Multipart-Encoded File
+- [x] POST a Multipart-Encoded File
 - [x] Response Status Codes
 - [x] Response Headers
 - [x] Cookies
@@ -53,15 +53,15 @@ Follow http://docs.python-requests.org/en/master/#the-user-guide
 
 - [x] Session Objects [CuSession]
 - [x] Request and Response Objects [CuResponse]
-- [x] Prepared Requests
+- [x] Prepared Requests [CuRequest, CuPreparedRequest]
 - [x] SSL Cert Verification
 - [x] Client Side Certificates
 - [x] CA Certificates
 - [x] Body Content Workflow
 - [x] Keep-Alive
-- [ ] Streaming Uploads
-- [ ] Chunk-Encoded Requests
-- [ ] POST Multiple Multipart-Encoded Files
+- [x] Streaming Uploads
+- [x] Chunk-Encoded Requests [Generator / Async Generator]
+- [x] POST Multiple Multipart-Encoded Files
 - [x] Event Hooks
 - [x] Custom Authentication
 - [x] Streaming Requests [Async Generator]

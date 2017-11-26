@@ -5,8 +5,7 @@ from urllib.parse import quote
 
 from curio.meta import finalize
 from curio.file import AsyncFile
-from requests.models import Response
-from requests.models import PreparedRequest
+from requests.models import Request, Response, PreparedRequest
 from requests.utils import super_len, to_key_val_list
 from requests.exceptions import (
     ChunkedEncodingError, ContentDecodingError,
@@ -322,3 +321,22 @@ class CuPreparedRequest(PreparedRequest):
         self.body = MultipartBody(fields)
         self.headers.setdefault('Content-Type', self.body.content_type)
         self.prepare_content_length(self.body)
+
+
+class CuRequest(Request):
+    def prepare(self):
+        """Constructs a :class:`PreparedRequest <PreparedRequest>` for transmission and returns it."""
+        p = CuPreparedRequest()
+        p.prepare(
+            method=self.method,
+            url=self.url,
+            headers=self.headers,
+            files=self.files,
+            data=self.data,
+            json=self.json,
+            params=self.params,
+            auth=self.auth,
+            cookies=self.cookies,
+            hooks=self.hooks,
+        )
+        return p
