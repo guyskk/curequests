@@ -292,9 +292,9 @@ class CuPreparedRequest(PreparedRequest):
             return super().prepare_body(data, files, json)
 
         fields = []
-        for key, value in to_key_val_list(data):
+        for key, value in to_key_val_list(data or {}):
             fields.append(Field(key, content=value))
-        for (k, v) in files:
+        for (k, v) in to_key_val_list(files or {}):
             # support for explicit filename
             ft = None
             fh = None
@@ -322,4 +322,3 @@ class CuPreparedRequest(PreparedRequest):
         self.body = MultipartBody(fields)
         self.headers.setdefault('Content-Type', self.body.content_type)
         self.prepare_content_length(self.body)
-        print(self.headers)
