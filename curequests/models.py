@@ -1,11 +1,23 @@
+import mimetypes
+from uuid import uuid4
+from os.path import basename
+from urllib.parse import quote
+
 from curio.meta import finalize
-from requests.models import Response
+from curio.file import AsyncFile
+from requests.models import Request, Response, PreparedRequest
+from requests.utils import super_len, to_key_val_list
 from requests.exceptions import (
     ChunkedEncodingError, ContentDecodingError,
     ConnectionError, StreamConsumedError)
 from requests.models import ITER_CHUNK_SIZE
+
 from .utils import stream_decode_response_unicode, iter_slices
 from .cuhttp import DecodeError, ProtocolError, ReadTimeoutError
+
+
+EOL = '\r\n'
+bEOL = b'\r\n'
 
 
 class CuResponse(Response):
@@ -147,3 +159,184 @@ class CuResponse(Response):
                 await self.connection.close()
         else:
             await self.connection.close()
+
+
+def encode_headers(headers):
+    ret = []
+    for k, v in headers.items():
+        ret.append('{}: {}'.format(k, v))
+    return EOL.join(ret).encode('ascii')
+
+
+class Field:
+
+    __slots__ = (
+        'name', 'filename', 'content', 'file', 'headers', 'content_length',
+        'encoded_headers', '_should_close_file',
+    )
+
+    def __init__(self, name, *, filename=None, headers=None, content_type=None,
+                 file=None, filepath=None, content=None, encoding='utf-8'):
+        self.name = quote(name, safe='')
+        self.headers = headers or {}
+        self.content_length = None
+        self._should_close_file = False
+
+        if content is not None:
+            if isinstance(content, str):
+                content = content.encode(encoding)
+        self.content = content
+
+        if filepath is not None:
+            file = open(filepath, 'rb')
+            self._should_close_file = True
+        if file is not None:
+            if not isinstance(file, AsyncFile):
+                file = AsyncFile(file)
+        self.file = file
+
+        if content is None and file is None:
+            raise ValueError('Field data must be provided.')
+        if content is not None and file is not None:
+            raise ValueError("Can't provide both content and file.")
+
+        if content is not None:
+            self.content_length = len(content)
+        else:
+            with file.blocking() as f:
+                self.content_length = super_len(f)
+
+        if filename is None:
+            if filepath is None and file is not None:
+                filepath = getattr(file, 'name')
+            if filepath is not None:
+                filename = basename(filepath)
+        if filename is not None:
+            filename = quote(filename, safe='')
+        self.filename = filename
+
+        if content_type is None and filename is not None:
+            content_type = mimetypes.guess_type(filename)[0]
+        if content_type is not None:
+            self.headers['Content-Type'] = content_type
+
+        disposition = ['form-data', f'name="{self.name}"']
+        if self.filename is not None:
+            disposition.append(f'filename="{self.filename}"')
+        self.headers['Content-Disposition'] = '; '.join(disposition)
+
+        self.encoded_headers = encode_headers(self.headers)
+
+    def __len__(self):
+        return self.content_length
+
+    async def close(self):
+        if self._should_close_file:
+            await self.file.close()
+
+
+class MultipartBody:
+
+    def __init__(self, fields, boundary=None):
+        self.fields = fields
+        if not boundary:
+            boundary = uuid4().hex
+        self.boundary = boundary
+        self.encoded_boundary = boundary.encode('ascii')
+        self.content_type = 'multipart/form-data; boundary={}'.format(boundary)
+        self.content_length = self._compute_content_length()
+        self._gen = self._generator()
+
+    def _compute_content_length(self):
+        eol_len = len(bEOL)
+        boundary_len = len(self.encoded_boundary)
+        length = 0
+        for field in self.fields:
+            length += 2 + boundary_len + eol_len
+            length += len(field.encoded_headers) + eol_len
+            length += eol_len
+            length += field.content_length + eol_len
+        length += 2 + boundary_len + 2 + eol_len
+        return length
+
+    def __len__(self):
+        return self.content_length
+
+    async def __aiter__(self):
+        async for chunk in self._gen:
+            yield chunk
+
+    async def _generator(self):
+        chunk_size = 16 * 1024
+        sep = b'--' + self.encoded_boundary + bEOL
+        for field in self.fields:
+            yield sep + field.encoded_headers + bEOL + bEOL
+            if field.content is not None:
+                yield field.content
+            else:
+                while True:
+                    chunk = await field.file.read(chunk_size)
+                    if not chunk:
+                        break
+                    yield chunk
+            yield bEOL
+        yield b'--' + self.encoded_boundary + b'--' + bEOL
+
+
+class CuPreparedRequest(PreparedRequest):
+
+    def prepare_body(self, data, files, json=None):
+        """Prepares the given HTTP body data."""
+        if not files:
+            return super().prepare_body(data, files, json)
+
+        fields = []
+        for key, value in to_key_val_list(data or {}):
+            fields.append(Field(key, content=value))
+        for (k, v) in to_key_val_list(files or {}):
+            # support for explicit filename
+            ft = None
+            fh = None
+            if isinstance(v, (tuple, list)):
+                if len(v) == 2:
+                    fn, fp = v
+                elif len(v) == 3:
+                    fn, fp, ft = v
+                else:
+                    fn, fp, ft, fh = v
+            else:
+                fn = None
+                fp = v
+
+            if isinstance(fp, (str, bytes, bytearray)):
+                content = fp
+                fp = None
+            else:
+                content = None
+
+            fields.append(Field(
+                k, filename=fn, file=fp, content=content,
+                content_type=ft, headers=fh))
+
+        self.body = MultipartBody(fields)
+        self.headers.setdefault('Content-Type', self.body.content_type)
+        self.prepare_content_length(self.body)
+
+
+class CuRequest(Request):
+    def prepare(self):
+        """Constructs a :class:`PreparedRequest <PreparedRequest>` for transmission and returns it."""
+        p = CuPreparedRequest()
+        p.prepare(
+            method=self.method,
+            url=self.url,
+            headers=self.headers,
+            files=self.files,
+            data=self.data,
+            json=self.json,
+            params=self.params,
+            auth=self.auth,
+            cookies=self.cookies,
+            hooks=self.hooks,
+        )
+        return p
