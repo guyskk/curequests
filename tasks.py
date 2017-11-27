@@ -24,7 +24,7 @@ def test(ctx, cov=False, verbose=False):
 @task
 def dist(ctx, upload=False):
     cmds = [
-        'rm dist/*',
+        'rm -f dist/*',
         'python setup.py bdist_wheel',
     ]
     if upload:
