@@ -1,14 +1,21 @@
+import os.path
 from setuptools import setup
 
+here = os.path.abspath(os.path.dirname(__file__))
+
+about = {}
+with open(os.path.join(here, 'curequests', '__about__.py')) as f:
+    exec(f.read(), about)
+
 setup(
-    name='curequests',
-    version='0.2.0',
-    description='Curio + Requests: Async HTTP for Humans',
+    name=about['__title__'],
+    version=about['__version__'],
+    description=about['__description__'],
     long_description=__doc__,
-    author='guyskk',
-    author_email='guyskk@qq.com',
-    url='https://github.com/guyskk/curequests',
-    license='MIT',
+    author=about['__author__'],
+    author_email=about['__author_email__'],
+    url=about['__url__'],
+    license=about['__license__'],
     packages=['curequests'],
     install_requires=[
         'httptools',
