@@ -6,6 +6,7 @@ python:
 
 install:
     - pip install -r requirements.txt
+    - pip freeze
 
 script:
     - inv lint
