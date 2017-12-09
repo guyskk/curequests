@@ -1,4 +1,5 @@
 import inspect
+import logging
 import mimetypes
 from uuid import uuid4
 from os.path import basename
@@ -16,6 +17,7 @@ from requests.models import ITER_CHUNK_SIZE
 from .utils import stream_decode_response_unicode, iter_slices
 from .cuhttp import DecodeError, ProtocolError, ReadTimeoutError
 
+logger = logging.getLogger(__name__)
 
 EOL = '\r\n'
 bEOL = b'\r\n'
@@ -75,6 +77,7 @@ class CuResponse(Response):
         async def generate():
             async with self:
                 async with finalize(self.raw.stream(chunk_size)) as gen:
+                    logger.debug(f'Iterate response body stream: {self}')
                     try:
                         async for trunk in gen:
                             yield trunk
@@ -159,6 +162,7 @@ class CuResponse(Response):
             else:
                 await self.connection.close()
         else:
+            logger.info(f'Response body not consumed, will close the connection: {self.connection}')
             await self.connection.close()
 
 

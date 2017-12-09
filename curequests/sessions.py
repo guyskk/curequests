@@ -1,3 +1,4 @@
+import logging
 from urllib.parse import urlparse, urljoin
 
 from requests.utils import requote_uri
@@ -18,6 +19,8 @@ from requests.sessions import (
 from .adapters import CuHTTPAdapter
 from .models import CuPreparedRequest
 from .models import MultipartBody, StreamBody
+
+logger = logging.getLogger(__name__)
 
 
 class CuSession(Session):
@@ -88,6 +91,7 @@ class CuSession(Session):
 
         :rtype: requests.Response
         """
+        logger.debug(f'Send request: {request}')
         # Set defaults that the hooks can utilize to ensure they always have
         # the correct parameters to reproduce the previous request.
         kwargs.setdefault('stream', self.stream)
@@ -113,6 +117,7 @@ class CuSession(Session):
 
         # Total elapsed time of the request (approximately)
         elapsed = preferred_clock() - start
+        logger.debug(f'Request {request} elapsed {elapsed:.3f} seconds')
         r.elapsed = timedelta(seconds=elapsed)
 
         # Response manipulation hooks
@@ -190,6 +195,8 @@ class CuSession(Session):
 
             next_request = request.copy()
             next_request.url = self._get_next_url(resp)
+            next_request.method = self._get_next_method(resp)
+            logger.debug(f'Redirect to: {next_request.method} {next_request.url}')
             headers = next_request.headers
 
             # https://github.com/requests/requests/issues/1084
@@ -199,10 +206,13 @@ class CuSession(Session):
                 for header in purged_headers:
                     next_request.headers.pop(header, None)
                 next_request.body = None
+
+            # Attempt to rewind consumed file-like object.
             should_rewind = (
                 ('Content-Length' in headers or 'Transfer-Encoding' in headers) and
                 isinstance(next_request.body, (MultipartBody, StreamBody)))
             if should_rewind:
+                logger.debug(f'Rewind request body for redirection: {next_request}')
                 next_request.body.rewind()
 
             try:
@@ -217,11 +227,7 @@ class CuSession(Session):
             merge_cookies(next_request._cookies, self.cookies)
             next_request.prepare_cookies(next_request._cookies)
 
-            next_request.method = self._get_next_method(resp)
             self.rebuild_auth(next_request, resp)
-
-            # TODO
-            # Attempt to rewind consumed file-like object.
 
             # Override the original request.
             request = next_request
@@ -252,6 +258,7 @@ class CuSession(Session):
 
     async def close(self):
         """Closes all adapters and as such the session"""
+        logger.debug(f'Close session {self}')
         for v in self.adapters.values():
             await v.close()
 

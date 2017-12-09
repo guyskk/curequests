@@ -60,11 +60,11 @@ async def test_stream_upload(httpbin_both):
     assert r.json()['data'] == TEST_DATA
 
 
-@pytest.mark.skip('Maybe pytest-httpbin bug, tests pass against httpbin.org')
 @run_with_curio
-async def test_redirect_upload_file(httpbin_both):
-    # httpbin_both = 'http://httpbin.org'
-    # httpbin_both = 'http://127.0.0.1:8888'
+async def test_redirect_upload_file():
+    # FIXME: Maybe pytest-httpbin's bug, will cause Broken Pipe when
+    # send the request to local httpbin. httpbin.org and gunicorn is OK.
+    httpbin_both = 'http://httpbin.org'
     url = httpbin_both + '/redirect-to'
     files = {'file': open('tests/upload.txt', 'rb')}
     r = await post(url, files=files, params={'url': '/post', 'status_code': 307})

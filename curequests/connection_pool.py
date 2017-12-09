@@ -9,6 +9,7 @@ Usage:
         # connection will close if exception raised
         # else connection will release to pool
 """
+import logging
 from base64 import b64encode
 from yarl import URL
 from curio.io import WantRead, WantWrite
@@ -18,6 +19,8 @@ from .resource_pool import ResourcePool, ResourcePoolClosedError
 from .future import Future
 from .cuhttp import RequestSerializer, ResponseParser
 from .network import open_connection, ssl_wrap_socket
+
+logger = logging.getLogger(__name__)
 
 
 def _basic_auth_str(username, password):
@@ -35,6 +38,7 @@ async def _close_connection_if_need(resource):
         conn = resource.connection
         conn._closed = True
         await conn.sock.close()
+        logger.debug(f'Connection {conn} closed')
 
 
 class Connection:
@@ -84,6 +88,8 @@ class Connection:
     async def _close_or_release(self, close=False):
         if self._closed or self._released:
             return
+        action = 'Close' if close else 'Release'
+        logger.debug(f'{action} connection {self}')
         pool_ret = self._resource_pool.put(self._resource, close=close)
         self._released = True
         await _close_connection_if_need(pool_ret.need_close)
@@ -145,6 +151,7 @@ class ConnectionPool:
     async def _open_connection(self, resource, proxy=None, timeout=None, **ssl_params):
         scheme, host, port = resource.key
         if not proxy:
+            logger.debug(f'Connect to {host}:{port}')
             sock = await open_connection(
                 host=host,
                 port=port,
@@ -153,6 +160,7 @@ class ConnectionPool:
             )
             return Connection(self._pool, resource, sock)
         proxy = URL(proxy)
+        logger.debug(f'Connect to proxy {proxy}')
         sock = await open_connection(
             host=proxy.raw_host,
             port=proxy.port,
@@ -163,12 +171,14 @@ class ConnectionPool:
 
     async def _setup_proxy(self, conn, proxy, **ssl_params):
         if not ssl_params.get('ssl_context'):
+            logger.debug(f'Forward HTTP request to {proxy}')
             return conn
         headers = {}
         if proxy.raw_user:
             auth = _basic_auth_str(proxy.raw_user, proxy.password)
             headers['Proxy-Authorization'] = auth
         path = f'{conn.host}:{conn.port}'
+        logger.debug(f'Setup HTTP tunnel {proxy}')
         request = RequestSerializer(path, method='CONNECT', headers=headers)
         async for chunk in request:
             await conn.sock.sendall(chunk)
@@ -209,6 +219,7 @@ class ConnectionPool:
         while True:
             conn = await self._get(scheme, host, port, **kwargs)
             if conn._is_peer_closed():
+                logger.info(f"Detected connection's peer closed, will close the connection: {conn}")
                 await conn.close()
             else:
                 return conn
@@ -224,9 +235,11 @@ class ConnectionPool:
 
         if pool_ret.need_open is not None:
             conn = await self._open_connection(pool_ret.need_open, **kwargs)
+            logger.debug(f'Get new connection: {conn}')
         else:
             conn = pool_ret.idle.connection
             conn._released = False
+            logger.debug(f'Get an idle connection: {conn}')
         return conn
 
     async def close(self, force=False):
@@ -235,6 +248,7 @@ class ConnectionPool:
         Params:
             force (bool): close busy connections or not
         """
+        logger.debug(f'Close connection pool: {self}')
         need_close, need_wait = self._pool.close(force=force)
         ex = ConnectionPoolClosedError('Connection pool closed')
         for resource in need_close:
