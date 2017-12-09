@@ -15,7 +15,7 @@ def lint(ctx):
 @task
 def test(ctx, cov=False, verbose=False):
     cov = ' --cov=curequests --cov-report=term-missing' if cov else ''
-    verbose = ' -v' if verbose else ''
+    verbose = ' -v -x --log-level=debug' if verbose else ''
     cmd = (f'REQUESTS_CA_BUNDLE=`python -m pytest_httpbin.certs` '
            f'pytest --tb=short{cov}{verbose} tests')
     ctx.run(cmd)

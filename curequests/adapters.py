@@ -1,3 +1,4 @@
+import logging
 from os.path import isdir, exists
 
 import yarl
@@ -8,14 +9,16 @@ from requests.adapters import (
     CaseInsensitiveDict, get_encoding_from_headers, extract_cookies_to_jar)
 from requests.exceptions import ConnectionError
 
-from .models import CuResponse, MultipartBody
-from .utils import select_proxy, normalize_timeout, ensure_asyncgen
+from .models import CuResponse, MultipartBody, StreamBody
+from .utils import select_proxy, normalize_timeout
 from .cuhttp import ResponseParser, RequestSerializer
 from .connection_pool import ConnectionPool
 
 DEFAULT_CONNS_PER_NETLOC = 10
 DEFAULT_CONNS_TOTAL = 100
 CONTENT_CHUNK_SIZE = 16 * 1024
+
+logger = logging.getLogger(__name__)
 
 
 class CuHTTPAdapter(BaseAdapter):
@@ -110,6 +113,7 @@ class CuHTTPAdapter(BaseAdapter):
         :param proxies: (optional) The proxies dictionary to apply to the request.
         :rtype: requests.Response
         """
+        logger.debug(f'Send request: {request.method} {request.url}')
         url = yarl.URL(request.url)
         request.headers.setdefault('Host', url.raw_host)
 
@@ -133,10 +137,8 @@ class CuHTTPAdapter(BaseAdapter):
             origin = f'{url.scheme}://{url.raw_host}:{url.port}'
             request_path = origin + request_path
         body = body_stream = None
-        if isinstance(request.body, MultipartBody):
+        if isinstance(request.body, (MultipartBody, StreamBody)):
             body_stream = request.body
-        elif request.body and not isinstance(request.body, bytes):
-            body_stream = ensure_asyncgen(request.body)
         else:
             body = request.body
         serializer = RequestSerializer(
@@ -147,21 +149,12 @@ class CuHTTPAdapter(BaseAdapter):
             body_stream=body_stream,
         )
 
+        sock = conn.sock
         try:
-            sock = conn.sock
             try:
                 async for bytes_to_send in serializer:
                     await sock.sendall(bytes_to_send)
                 raw = await ResponseParser(sock, timeout=timeout.read).parse()
-                if not stream:
-                    content = []
-                    async for chunk in raw.stream(CONTENT_CHUNK_SIZE):
-                        content.append(chunk)
-                    content = b''.join(content)
-                    if raw.keep_alive:
-                        await conn.release()
-                    else:
-                        await conn.close()
             except (curio.socket.error) as err:
                 raise ConnectionError(err, request=request)
         except:
@@ -169,7 +162,17 @@ class CuHTTPAdapter(BaseAdapter):
             raise
 
         response = self.build_response(request, raw, conn)
+        logger.debug(f'Receive response: {response}')
         if not stream:
+            content = []
+            async for chunk in raw.stream(CONTENT_CHUNK_SIZE):
+                content.append(chunk)
+            content = b''.join(content)
+            logger.debug(f'Readed response body, length {len(content)}')
+            if raw.keep_alive:
+                await conn.release()
+            else:
+                await conn.close()
             response._content = content
             response._content_consumed = True
         return response
@@ -217,4 +220,5 @@ class CuHTTPAdapter(BaseAdapter):
         Currently, this closes the PoolManager and any active ProxyManager,
         which closes any pooled connections.
         """
+        logger.debug(f'Close adapter {self}')
         await self._pool.close()

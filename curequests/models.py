@@ -1,3 +1,5 @@
+import inspect
+import logging
 import mimetypes
 from uuid import uuid4
 from os.path import basename
@@ -9,12 +11,13 @@ from requests.models import Request, Response, PreparedRequest
 from requests.utils import super_len, to_key_val_list
 from requests.exceptions import (
     ChunkedEncodingError, ContentDecodingError,
-    ConnectionError, StreamConsumedError)
+    ConnectionError, StreamConsumedError, UnrewindableBodyError)
 from requests.models import ITER_CHUNK_SIZE
 
 from .utils import stream_decode_response_unicode, iter_slices
 from .cuhttp import DecodeError, ProtocolError, ReadTimeoutError
 
+logger = logging.getLogger(__name__)
 
 EOL = '\r\n'
 bEOL = b'\r\n'
@@ -74,6 +77,7 @@ class CuResponse(Response):
         async def generate():
             async with self:
                 async with finalize(self.raw.stream(chunk_size)) as gen:
+                    logger.debug(f'Iterate response body stream: {self}')
                     try:
                         async for trunk in gen:
                             yield trunk
@@ -158,6 +162,7 @@ class CuResponse(Response):
             else:
                 await self.connection.close()
         else:
+            logger.info(f'Response body not consumed, will close the connection: {self.connection}')
             await self.connection.close()
 
 
@@ -168,11 +173,36 @@ def encode_headers(headers):
     return EOL.join(ret).encode('ascii')
 
 
+def safe_tell(f):
+    # Record the current file position before reading.
+    # This will allow us to rewind a file in the event
+    # of a redirect.
+    if not hasattr(f, 'tell'):
+        return None
+    try:
+        return f.tell()
+    except (IOError, OSError):
+        return None
+
+
+def rewind_file(file, position):
+    body_seek = getattr(file, 'seek', None)
+    if body_seek is not None and position is not None:
+        try:
+            body_seek(position)
+        except (IOError, OSError):
+            raise UnrewindableBodyError(
+                'An error occurred when rewinding request '
+                'body for redirect.')
+    else:
+        raise UnrewindableBodyError('Unable to rewind request body for redirect.')
+
+
 class Field:
 
     __slots__ = (
         'name', 'filename', 'content', 'file', 'headers', 'content_length',
-        'encoded_headers', '_should_close_file',
+        'encoded_headers', '_should_close_file', '_body_position',
     )
 
     def __init__(self, name, *, filename=None, headers=None, content_type=None,
@@ -202,9 +232,11 @@ class Field:
 
         if content is not None:
             self.content_length = len(content)
+            self._body_position = None
         else:
             with file.blocking() as f:
                 self.content_length = super_len(f)
+                self._body_position = safe_tell(f)
 
         if filename is None:
             if filepath is None and file is not None:
@@ -234,6 +266,15 @@ class Field:
         if self._should_close_file:
             await self.file.close()
 
+    def rewind(self):
+        """Move file pointer back to its recorded starting position
+        so it can be read again on redirect.
+        """
+        if self.file is None:
+            return
+        with self.file.blocking() as f:
+            rewind_file(f, self._body_position)
+
 
 class MultipartBody:
 
@@ -245,6 +286,11 @@ class MultipartBody:
         self.encoded_boundary = boundary.encode('ascii')
         self.content_type = 'multipart/form-data; boundary={}'.format(boundary)
         self.content_length = self._compute_content_length()
+        self._gen = self._generator()
+
+    def rewind(self):
+        for f in self.fields:
+            f.rewind()
         self._gen = self._generator()
 
     def _compute_content_length(self):
@@ -283,12 +329,33 @@ class MultipartBody:
         yield b'--' + self.encoded_boundary + b'--' + bEOL
 
 
+class StreamBody:
+
+    def __init__(self, data):
+        self._data = data
+        self._body_position = safe_tell(data)
+
+    async def __aiter__(self):
+        if not inspect.isasyncgen(self._data):
+            for chunk in self._data:
+                yield chunk
+        else:
+            async for chunk in self._data:
+                yield chunk
+
+    def rewind(self):
+        rewind_file(self._data, self._body_position)
+
+
 class CuPreparedRequest(PreparedRequest):
 
     def prepare_body(self, data, files, json=None):
         """Prepares the given HTTP body data."""
         if not files:
-            return super().prepare_body(data, files, json)
+            super().prepare_body(data, files, json)
+            if self.body and not isinstance(self.body, bytes):
+                self.body = StreamBody(self.body)
+            return
 
         fields = []
         for key, value in to_key_val_list(data or {}):
