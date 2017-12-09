@@ -1,4 +1,3 @@
-import inspect
 import codecs
 from collections import namedtuple
 
@@ -78,12 +77,3 @@ def select_proxy(scheme, host, port, proxies):
             break
 
     return proxy
-
-
-async def ensure_asyncgen(body):
-    if not inspect.isasyncgen(body):
-        for chunk in body:
-            yield chunk
-    else:
-        async for chunk in body:
-            yield chunk

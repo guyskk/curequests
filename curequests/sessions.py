@@ -17,6 +17,7 @@ from requests.sessions import (
     merge_hooks)
 from .adapters import CuHTTPAdapter
 from .models import CuPreparedRequest
+from .models import MultipartBody, StreamBody
 
 
 class CuSession(Session):
@@ -189,6 +190,7 @@ class CuSession(Session):
 
             next_request = request.copy()
             next_request.url = self._get_next_url(resp)
+            headers = next_request.headers
 
             # https://github.com/requests/requests/issues/1084
             if resp.status_code not in (307, 308):
@@ -197,7 +199,12 @@ class CuSession(Session):
                 for header in purged_headers:
                     next_request.headers.pop(header, None)
                 next_request.body = None
-            headers = next_request.headers
+            should_rewind = (
+                ('Content-Length' in headers or 'Transfer-Encoding' in headers) and
+                isinstance(next_request.body, (MultipartBody, StreamBody)))
+            if should_rewind:
+                next_request.body.rewind()
+
             try:
                 del headers['Cookie']
             except KeyError:
