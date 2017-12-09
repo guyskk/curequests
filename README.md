@@ -45,7 +45,7 @@ Follow http://docs.python-requests.org/en/master/#the-user-guide
 - [x] Response Status Codes
 - [x] Response Headers
 - [x] Cookies
-- [ ] Redirection and History
+- [x] Redirection and History
 - [x] Timeouts
 - [x] Errors and Exceptions
 
