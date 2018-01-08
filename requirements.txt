@@ -4,7 +4,7 @@ tox==2.9.1
 flake8==3.5.0
 pytest==3.3.1
 pytest-cov==2.5.1
-codecov==2.0.10
+codecov==2.0.13
 pytest-httpbin==0.3.0
 invoke==0.22.0
 twine==1.9.1
