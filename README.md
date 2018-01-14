@@ -87,3 +87,5 @@ Follow http://docs.python-requests.org/en/master/#the-user-guide
 
 - https://github.com/littlecodersh/trip
   Async HTTP for Humans, Tornado & Requests In Pair
+- https://github.com/theelous3/asks
+  Async requests-like httplib for python
