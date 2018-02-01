@@ -1,11 +1,11 @@
 -e .
-pre-commit==1.4.4
+pre-commit==1.5.1
 tox==2.9.1
 flake8==3.5.0
-pytest==3.3.2
+pytest==3.4.0
 pytest-cov==2.5.1
-codecov==2.0.13
+codecov==2.0.15
 pytest-httpbin==0.3.0
-invoke==0.22.0
+invoke==0.22.1
 twine==1.9.1
 wheel==0.30.0
