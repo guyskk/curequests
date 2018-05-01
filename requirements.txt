@@ -7,5 +7,5 @@ pytest-cov==2.5.1
 codecov==2.0.15
 pytest-httpbin==0.3.0
 invoke==0.23.0
-twine==1.9.1
+twine==1.11.0
 wheel==0.30.0
