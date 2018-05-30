@@ -5,8 +5,6 @@ from uuid import uuid4
 from os.path import basename
 from urllib.parse import quote
 
-from curio.meta import finalize
-from curio.file import AsyncFile
 from requests.models import Request, Response, PreparedRequest
 from requests.utils import super_len, to_key_val_list
 from requests.exceptions import (
@@ -76,18 +74,19 @@ class CuResponse(Response):
 
         async def generate():
             async with self:
-                async with finalize(self.raw.stream(chunk_size)) as gen:
-                    logger.debug(f'Iterate response body stream: {self}')
-                    try:
-                        async for trunk in gen:
-                            yield trunk
-                    except ProtocolError as e:
-                        raise ChunkedEncodingError(e)
-                    except DecodeError as e:
-                        raise ContentDecodingError(e)
-                    except ReadTimeoutError as e:
-                        raise ConnectionError(e)
-                    self._content_consumed = True
+                # async with finalize(self.raw.stream(chunk_size)) as gen:
+                gen = self.raw.stream(chunk_size)
+                logger.debug(f'Iterate response body stream: {self}')
+                try:
+                    async for trunk in gen:
+                        yield trunk
+                except ProtocolError as e:
+                    raise ChunkedEncodingError(e)
+                except DecodeError as e:
+                    raise ContentDecodingError(e)
+                except ReadTimeoutError as e:
+                    raise ConnectionError(e)
+                self._content_consumed = True
 
         if self._content_consumed:
             # simulate reading small chunks of the content
@@ -112,24 +111,24 @@ class CuResponse(Response):
 
         gen = self.iter_content(chunk_size=chunk_size, decode_unicode=decode_unicode)
 
-        async with finalize(gen) as gen:
-            async for chunk in gen:
+        # async with finalize(gen) as gen:
+        async for chunk in gen:
 
-                if pending is not None:
-                    chunk = pending + chunk
+            if pending is not None:
+                chunk = pending + chunk
 
-                if delimiter:
-                    lines = chunk.split(delimiter)
-                else:
-                    lines = chunk.splitlines()
+            if delimiter:
+                lines = chunk.split(delimiter)
+            else:
+                lines = chunk.splitlines()
 
-                if lines and lines[-1] and chunk and lines[-1][-1] == chunk[-1]:
-                    pending = lines.pop()
-                else:
-                    pending = None
+            if lines and lines[-1] and chunk and lines[-1][-1] == chunk[-1]:
+                pending = lines.pop()
+            else:
+                pending = None
 
-                for line in lines:
-                    yield line
+            for line in lines:
+                yield line
 
         if pending is not None:
             yield pending
@@ -220,9 +219,9 @@ class Field:
         if filepath is not None:
             file = open(filepath, 'rb')
             self._should_close_file = True
-        if file is not None:
-            if not isinstance(file, AsyncFile):
-                file = AsyncFile(file)
+        # if file is not None:
+        #     if not isinstance(file, AsyncFile):
+        #         file = AsyncFile(file)
         self.file = file
 
         if content is None and file is None:
@@ -234,9 +233,8 @@ class Field:
             self.content_length = len(content)
             self._body_position = None
         else:
-            with file.blocking() as f:
-                self.content_length = super_len(f)
-                self._body_position = safe_tell(f)
+            self.content_length = super_len(file)
+            self._body_position = safe_tell(file)
 
         if filename is None:
             if filepath is None and file is not None:
@@ -264,7 +262,7 @@ class Field:
 
     async def close(self):
         if self._should_close_file:
-            await self.file.close()
+            self.file.close()
 
     def rewind(self):
         """Move file pointer back to its recorded starting position
@@ -272,8 +270,8 @@ class Field:
         """
         if self.file is None:
             return
-        with self.file.blocking() as f:
-            rewind_file(f, self._body_position)
+        # with self.file.blocking() as f:
+        rewind_file(self.file, self._body_position)
 
 
 class MultipartBody:
@@ -321,7 +319,7 @@ class MultipartBody:
                 yield field.content
             else:
                 while True:
-                    chunk = await field.file.read(chunk_size)
+                    chunk = field.file.read(chunk_size)
                     if not chunk:
                         break
                     yield chunk

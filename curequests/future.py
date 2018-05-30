@@ -1,4 +1,4 @@
-from curio import Event
+from newio.sync import Event
 
 
 class Future:

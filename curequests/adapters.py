@@ -2,8 +2,7 @@ import logging
 from os.path import isdir, exists
 
 import yarl
-import curio
-from curio import ssl
+from newio import ssl, socket
 from requests.adapters import BaseAdapter
 from requests.adapters import (
     CaseInsensitiveDict, get_encoding_from_headers, extract_cookies_to_jar)
@@ -155,7 +154,7 @@ class CuHTTPAdapter(BaseAdapter):
                 async for bytes_to_send in serializer:
                     await sock.sendall(bytes_to_send)
                 raw = await ResponseParser(sock, timeout=timeout.read).parse()
-            except (curio.socket.error) as err:
+            except socket.error as err:
                 raise ConnectionError(err, request=request)
         except:
             await conn.close()

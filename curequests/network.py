@@ -1,4 +1,4 @@
-from curio import ssl, socket
+from newio import ssl, socket
 
 
 async def ssl_wrap_socket(

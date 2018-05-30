@@ -1,12 +1,9 @@
 import functools
-import curio
+from newio_kernel import run
 
 
 def run_with_curio(f):
     @functools.wraps(f)
     def wrapper(*args, **kwargs):
-        try:
-            curio.run(f(*args, **kwargs))
-        except curio.TaskError as ex:
-            raise ex.__cause__ from None
+        run(f(*args, **kwargs))
     return wrapper

@@ -1,7 +1,8 @@
 import json
 from curio.meta import finalize
 from curequests import get, post
-from utils import run_with_curio
+
+from .utils import run_with_curio
 
 
 @run_with_curio

@@ -2,7 +2,8 @@ import pytest
 from curequests import post
 from curio.file import aopen
 from requests.exceptions import UnrewindableBodyError
-from utils import run_with_curio
+
+from .utils import run_with_curio
 
 TEST_DATA = 'test data\n'
 

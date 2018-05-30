@@ -1,6 +1,7 @@
 from curequests.resource_pool import ResourcePool
 from curequests.future import Future
-from utils import run_with_curio
+
+from .utils import run_with_curio
 
 
 @run_with_curio
@@ -102,7 +103,7 @@ async def test_resource_pool_wait_and_notify_diff_key():
 
 
 @run_with_curio
-def test_put_when_pool_closed():
+async def test_put_when_pool_closed():
     pool = ResourcePool(Future)
     ga = pool.get('A')
     pool.close()

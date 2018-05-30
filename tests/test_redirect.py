@@ -1,7 +1,8 @@
 import pytest
 from curequests import session
 from requests.exceptions import TooManyRedirects
-from utils import run_with_curio
+
+from .utils import run_with_curio
 
 
 @run_with_curio

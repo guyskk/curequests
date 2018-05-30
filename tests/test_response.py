@@ -1,6 +1,7 @@
 from curio.meta import finalize
 from curequests import get
-from utils import run_with_curio
+
+from .utils import run_with_curio
 
 
 @run_with_curio

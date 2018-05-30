@@ -1,4 +1,4 @@
-from utils import run_with_curio
+from .utils import run_with_curio
 
 
 @run_with_curio

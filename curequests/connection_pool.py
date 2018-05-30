@@ -12,9 +12,8 @@ Usage:
 import logging
 from base64 import b64encode
 from yarl import URL
-from curio.io import WantRead, WantWrite
 from requests.exceptions import ProxyError
-
+from newio.ssl import SSLWantReadError, SSLWantWriteError
 from .resource_pool import ResourcePool, ResourcePoolClosedError
 from .future import Future
 from .cuhttp import RequestSerializer, ResponseParser
@@ -76,12 +75,12 @@ class Connection:
         """check if socket in close-wait state"""
         # the socket is non-blocking mode, read 1 bytes will return EOF
         # which means peer closed, or raise exception means alive
-        try:
-            r = self.sock._socket_recv(1)  # FIXME: I use a private method, bad!
-        except WantRead:
-            return False
-        except WantWrite:
-            return False
+        with self.sock.blocking() as sock:
+            sock.setblocking(False)
+            try:
+                r = sock.recv(1)
+            except (BlockingIOError, SSLWantReadError, SSLWantWriteError):
+                return False
         assert r == b'', "is_peer_closed shouldn't be called at this time!"
         return True
 
