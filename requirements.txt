@@ -2,7 +2,7 @@
 pre-commit==1.10.4
 tox==3.1.2
 flake8==3.5.0
-pytest==3.6.2
+pytest==3.7.0
 pytest-cov==2.5.1
 codecov==2.0.15
 pytest-httpbin==0.3.0
