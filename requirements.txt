@@ -1,8 +1,8 @@
 -e .
-pre-commit==1.10.4
-tox==3.1.2
+pre-commit==1.10.5
+tox==3.2.1
 flake8==3.5.0
-pytest==3.7.0
+pytest==3.7.4
 pytest-cov==2.5.1
 codecov==2.0.15
 pytest-httpbin==0.3.0
