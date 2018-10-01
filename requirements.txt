@@ -1,5 +1,5 @@
 -e .
-pre-commit==1.10.4
+pre-commit==1.11.1
 tox==3.1.2
 flake8==3.5.0
 pytest==3.7.0
