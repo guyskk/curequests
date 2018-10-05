@@ -2,12 +2,6 @@ from invoke import task
 
 
 @task
-def install(ctx):
-    ctx.run('pip install -r requirements.txt')
-    ctx.run('pre-commit install')
-
-
-@task
 def lint(ctx):
     ctx.run('pre-commit run --all-files')
 
