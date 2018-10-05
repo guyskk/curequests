@@ -5,7 +5,7 @@ python:
   - "nightly"
 
 install:
-    - pip install -I -r requirements.txt
+    - ./bootstrap.sh
     - pip freeze
 
 script:
