@@ -8,7 +8,7 @@ certifi==2018.10.15
 cffi==1.11.5
 chardet==3.0.4
 Click==7.0
-codecov==2.0.13
+codecov==2.0.15
 coverage==4.5.1
 curio==0.9
 decorator==4.3.0
