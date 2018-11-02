@@ -41,7 +41,7 @@ def normalize_timeout(timeout):
         try:
             connect, read = timeout
             timeout = TimeoutValue(connect=connect, read=read)
-        except ValueError as e:
+        except ValueError:
             # this may raise a string formatting error.
             err = ('Invalid timeout {0}. Pass a (connect, read) '
                    'timeout tuple, or a single float to set '
