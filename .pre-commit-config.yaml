@@ -28,4 +28,4 @@ repos:
     - id: flake8
       args:
         - '--max-line-length=119'
-        - '--ignore=E722'
+        - '--ignore=E722,W504'
