@@ -21,7 +21,7 @@ idna==2.7
 invoke==1.2.0
 itsdangerous==1.1.0
 Jinja2==2.10
-MarkupSafe==1.0
+MarkupSafe==1.1.0
 mccabe==0.6.1
 more-itertools==4.3.0
 multidict==4.4.2
