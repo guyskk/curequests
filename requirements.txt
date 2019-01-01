@@ -41,7 +41,7 @@ PyYAML==3.13
 raven==6.10.0
 requests==2.21.0
 requests-toolbelt==0.8.0
-six==1.11.0
+six==1.12.0
 tox==3.5.3
 tqdm==4.28.1
 twine==1.12.1
