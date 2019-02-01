@@ -31,7 +31,7 @@ pkginfo==1.5.0.1
 pluggy==0.8.1
 pre-commit==1.14.2
 py==1.7.0
-pycodestyle==2.4.0
+pycodestyle==2.5.0
 pycparser==2.19
 pyflakes==2.0.0
 pytest==3.9.3
