@@ -15,7 +15,7 @@ decorator==4.3.2
 flake8==3.7.7
 Flask==1.0.2
 httpbin==0.7.0
-httptools==0.0.11
+httptools==0.0.13
 identify==1.1.7
 idna==2.7
 invoke==1.2.0
