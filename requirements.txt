@@ -40,7 +40,7 @@ pytest-httpbin==1.0.0
 PyYAML==3.13
 raven==6.10.0
 requests==2.21.0
-requests-toolbelt==0.8.0
+requests-toolbelt==0.9.1
 six==1.11.0
 tox==3.5.3
 tqdm==4.28.1
