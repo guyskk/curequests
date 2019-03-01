@@ -9,7 +9,7 @@ cffi==1.12.2
 chardet==3.0.4
 Click==7.0
 codecov==2.0.15
-coverage==4.5.1
+coverage==4.5.2
 curio==0.9
 decorator==4.3.0
 flake8==3.6.0
