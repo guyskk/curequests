@@ -38,7 +38,7 @@ pytest==4.3.0
 pytest-cov==2.6.1
 pytest-httpbin==1.0.0
 PyYAML==3.13
-raven==6.9.0
+raven==6.10.0
 requests==2.20.0
 requests-toolbelt==0.8.0
 six==1.11.0
