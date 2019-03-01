@@ -33,7 +33,7 @@ pre-commit==1.14.4
 py==1.8.0
 pycodestyle==2.5.0
 pycparser==2.19
-pyflakes==2.0.0
+pyflakes==2.1.1
 pytest==3.9.3
 pytest-cov==2.6.0
 pytest-httpbin==0.3.0
