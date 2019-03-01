@@ -5,7 +5,7 @@ blinker==1.4
 brotlipy==0.7.0
 cached-property==1.5.1
 certifi==2018.11.29
-cffi==1.11.5
+cffi==1.12.2
 chardet==3.0.4
 Click==7.0
 codecov==2.0.15
