@@ -28,7 +28,7 @@ multidict==4.5.2
 namedlist==1.7
 nodeenv==1.3.3
 pkginfo==1.5.0.1
-pluggy==0.8.0
+pluggy==0.9.0
 pre-commit==1.12.0
 py==1.7.0
 pycodestyle==2.4.0
