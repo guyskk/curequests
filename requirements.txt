@@ -36,7 +36,7 @@ pycparser==2.19
 pyflakes==2.1.1
 pytest==4.3.0
 pytest-cov==2.6.1
-pytest-httpbin==0.3.0
+pytest-httpbin==1.0.0
 PyYAML==3.13
 raven==6.9.0
 requests==2.20.0
