@@ -44,7 +44,7 @@ requests-toolbelt==0.9.1
 six==1.12.0
 tox==3.7.0
 tqdm==4.31.1
-twine==1.12.1
+twine==1.13.0
 urllib3==1.24
 virtualenv==16.1.0
 Werkzeug==0.14.1
