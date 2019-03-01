@@ -1,4 +1,4 @@
-aspy.yaml==1.1.1
+aspy.yaml==1.2.0
 atomicwrites==1.2.1
 attrs==18.2.0
 blinker==1.4
