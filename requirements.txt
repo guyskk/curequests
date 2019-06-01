@@ -16,7 +16,7 @@ flake8==3.7.7
 Flask==1.0.3
 httpbin==0.7.0
 httptools==0.0.13
-identify==1.4.1
+identify==1.4.3
 idna==2.8
 invoke==1.2.0
 itsdangerous==1.1.0
