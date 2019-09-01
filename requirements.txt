@@ -18,7 +18,7 @@ httpbin==0.7.0
 httptools==0.0.13
 identify==1.4.7
 idna==2.8
-invoke==1.2.0
+invoke==1.3.0
 itsdangerous==1.1.0
 Jinja2==2.10.1
 MarkupSafe==1.1.1
