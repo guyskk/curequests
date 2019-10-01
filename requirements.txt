@@ -4,7 +4,7 @@ attrs==19.2.0
 blinker==1.4
 brotlipy==0.7.0
 cached-property==1.5.1
-certifi==2019.6.16
+certifi==2019.9.11
 cffi==1.12.3
 chardet==3.0.4
 Click==7.0
