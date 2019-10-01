@@ -13,7 +13,7 @@ coverage==4.5.4
 curio==0.9
 decorator==4.4.0
 flake8==3.7.8
-Flask==1.0.3
+Flask==1.1.1
 httpbin==0.7.0
 httptools==0.0.13
 identify==1.4.5
