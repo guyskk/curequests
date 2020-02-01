@@ -62,4 +62,4 @@ wcwidth==0.1.8
 webencodings==0.5.1
 Werkzeug==0.16.1
 yarl==1.4.2
-zipp==0.6.0
+zipp==2.1.0
