@@ -21,7 +21,7 @@ flake8==3.7.9
 Flask==1.1.1
 httpbin==0.7.0
 httptools==0.1.1
-identify==1.4.7
+identify==1.4.11
 idna==2.8
 importlib-metadata==0.23
 invoke==1.3.0
