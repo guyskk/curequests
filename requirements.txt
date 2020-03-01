@@ -46,7 +46,7 @@ pyparsing==2.4.6
 pytest==5.3.5
 pytest-cov==2.8.1
 pytest-httpbin==1.0.0
-PyYAML==5.1.2
+PyYAML==5.3
 raven==6.10.0
 readme-renderer==24.0
 requests==2.22.0
