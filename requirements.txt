@@ -7,7 +7,7 @@ brotlipy==0.7.0
 cached-property==1.5.1
 certifi==2019.11.28
 cffi==1.14.0
-cfgv==2.0.1
+cfgv==3.1.0
 chardet==3.0.4
 Click==7.0
 codecov==2.0.15
