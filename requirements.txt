@@ -5,7 +5,7 @@ bleach==3.1.1
 blinker==1.4
 brotlipy==0.7.0
 cached-property==1.5.1
-certifi==2019.9.11
+certifi==2019.11.28
 cffi==1.12.3
 cfgv==2.0.1
 chardet==3.0.4
