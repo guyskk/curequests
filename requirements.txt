@@ -49,7 +49,7 @@ pytest-httpbin==1.0.0
 PyYAML==5.3
 raven==6.10.0
 readme-renderer==24.0
-requests==2.22.0
+requests==2.23.0
 requests-toolbelt==0.9.1
 six==1.12.0
 toml==0.10.0
