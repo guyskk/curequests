@@ -20,7 +20,7 @@ filelock==3.0.12
 flake8==3.7.9
 Flask==1.1.1
 httpbin==0.7.0
-httptools==0.0.13
+httptools==0.1.1
 identify==1.4.7
 idna==2.8
 importlib-metadata==0.23
